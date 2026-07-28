@@ -1,1 +1,69 @@
-.venv
+# ==========================================
+# Python & Virtual Environments
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.python-version
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# ==========================================
+# Environment Variables & Local Credentials
+# ==========================================
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# ==========================================
+# Data Staging & Local Database Dumps
+# ==========================================
+*.sqlite3
+*.db
+*.sql
+backend/data/raw/*
+backend/data/secure/*
+!backend/data/raw/.gitkeep
+!backend/data/secure/.gitkeep
+
+# ==========================================
+# Logging & Runtime
+# ==========================================
+*.log
+logs/
+*.pid
+*.seed
+
+# ==========================================
+# Web Scraping & Playwright Artifacts
+# ==========================================
+.playwright/
+playwright-report/
+test-results/
+
+# ==========================================
+# IDEs & Operating System Files
+# ==========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ==========================================
+# Testing & Code Quality
+# ==========================================
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

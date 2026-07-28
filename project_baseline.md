@@ -6,30 +6,29 @@ This document establishes the official software architecture, database schemas, 
 
 ## 1. Core Technology Stack
 
-To achieve high-throughput web crawling, context-aware processing of Vietnamese financial terminology, and low-latency dashboard rendering, the platform uses the following decoupled technology stack:
-
 ### 1.1. Backend & Automation Core
-* **Language:** `Python 3.11+` (Industry standard for financial engineering, data wrangling, and machine learning pipelines).
-* **Task Scheduling:** `APScheduler` (Advanced Python Scheduler). Runs lightweight, recurring internal chron loops to trigger scraper runs without needing heavy infrastructure overhead like Celery or Redis.
-* **Network & API Client:** `HTTPX` (Asynchronous HTTP client supporting HTTP/2, excellent for high-speed API data pulling and scraping loops).
+* **Language:** `Python 3.11+`
+* **API Engine:** `FastAPI` + `Uvicorn` (Asynchronous ASGI framework powering REST endpoints and real-time WebSockets for UI updates).
+* **Task Scheduling:** `APScheduler` (Triggers recurring background polling routines to fetch stock news without external dependencies like Celery or Redis).
+* **HTTP & Webhooks:** `HTTPX` (Asynchronous HTTP client for Telegram alert delivery and external API requests).
 
-### 1.2. Web Scraping & Data Extraction Layer
-* **Static Scraper:** `BeautifulSoup4` paired with `lxml` parsing (Ultra-fast, low memory footprint extraction for cleanly structured archive lists like CafeF/Vietstock).
-* **Dynamic/SPA Scraper:** `Playwright for Python` (Asynchronous headless browser driver utilized exclusively as a tactical fallback to handle heavily obfuscated, JavaScript-rendered investor relation pages).
-* **Anti-Detection:** `fake-useragent` (Dynamically swaps HTTP headers to mitigate IP rate-limiting blocks).
+### 1.2. Market Data & News Ingestion Layer
+* **Data Ingestion SDK:** `vnstock` (Primary open-source library for streaming structured stock quotes, market metadata, and company news directly from financial data providers).
+* **Data Deduplication:** `SHA-256 Hashing` (Generates unique 64-character hex digests of incoming news headlines and content to prevent duplicate database writes).
 
 ### 1.3. Intelligence, Vectorization & NLP Layer
-* **Base Encoder Model:** `VinAI/phobert-base` or `ViFiNBERT` (Vietnamese Financial BERT). Crucial for translating local retail slang (*"đu đỉnh"*, *"lái lợn"*, *"bán tháo"*) into accurate statistical vector representations.
-* **Inference Orchestration:** `Hugging Face Transformers` + `PyTorch` (Local tokenization and tensor computation loops).
-* **Text Deduplication:** `Scikit-learn` (Implements rapid TF-IDF vector mapping and Cosine Similarity computations to isolate unique narrative clusters).
+* **Base Encoder Model:** `VinAI/phobert-base` or `ViFiNBERT` (Vietnamese Financial BERT model mapped to capture local financial context and market terminology).
+* **Inference Orchestration:** `Hugging Face Transformers` + `PyTorch` (Local tokenization and tensor computation).
+* **Vector Embeddings:** Direct translation of news items into 768-dimensional dense vectors for semantic risk matching.
 
 ### 1.4. Storage & Persistence Framework
-* **Primary Database Engine:** `PostgreSQL 16+` (Handles relational storage tracking system watchlists, active ticker states, parsed text arrays, and analytical logs).
-* **Vector Vector Engine Extension:** `pgvector` (Keeps the tech stack lean by nesting high-dimensional text embeddings directly inside existing PostgreSQL tables instead of standing up an independent standalone vector database).
+* **Primary Database Engine:** `PostgreSQL 16+` (Relational storage for watchlists, news archives, risk logs, and system metadata).
+* **Vector Engine Extension:** `pgvector` (Stores model embeddings directly inside PostgreSQL tables to allow fast vector similarity searches without needing an external vector DB).
 
 ### 1.5. Interface & Downstream Communication
-* **Data Visualization Interface:** `Streamlit` (Rapid Python frontend framework that translates data states into live dashboards with native layout adjustments, filtering modules, and analytics blocks).
-* **Notification Gateways:** Asynchronous webhooks integrated into the `python-telegram-bot` engine for real-time delivery alerts.
+* **Desktop UI Interface:** `Rainmeter` + `WebView2` plugin rendering a lightweight HTML/CSS/JS overlay on the desktop.
+* **Secondary Analytics UI:** `Streamlit` (Rapid internal dashboard framework for debugging and model evaluation).
+* **Alert Delivery:** `python-telegram-bot` (Asynchronous webhook integration sending real-time risk alerts directly to Telegram channels).
 
 ---
 
@@ -38,107 +37,95 @@ To achieve high-throughput web crawling, context-aware processing of Vietnamese 
 ```
 MarketEval/
 │
-├── .env.example                # Blueprint for system access tokens, proxy nodes, and database connection strings
-├── .gitignore                  # Prevents internal caching arrays, system local configurations, and logs from committing
-├── README.md                   # Core infrastructure documentation and developer onboarding runbook
-├── requirements.txt            # Explicit pinning configurations for all pip package dependencies
+├── .env.example                # Blueprint for system access tokens, DB URIs, and environment configurations
+├── .gitignore                  # Excludes Python bytecode, virtual environments, local database credentials, and logs
+├── README.md                   # System operational guide and setup runbook
+├── requirements.txt            # Dependency pin list (vnstock, fastapi, pgvector, torch, transformers, etc.)
 │
 ├── backend/
-│   ├── api/                        # FastAPI Local Backend Service Layer
+│   ├── api/                        # FastAPI Service Layer
 │   │   ├── __init__.py
-│   │   ├── main.py                 # Entry point for ASGI server startup and CORS configuration
-│   │   └── routes/                 # Endpoint routing logic
-│   │       ├── tickers.py          # Watchlist & market metadata endpoints
-│   │       ├── risk.py             # Risk scores, sentiment vectors, horizon assessments
-│   │       └── ws.py               # WebSocket stream for real-time push updates to desktop UI
+│   │   ├── main.py                 # Entry point for ASGI server startup, CORS, and background tasks
+│   │   └── routes/                 # Endpoint routing modules
+│   │       ├── tickers.py          # Watchlist & market metadata management
+│   │       ├── news.py             # Ingested news retrieval and filtering endpoints
+│   │       ├── risk.py             # Risk assessments, sentiment scores, and horizon signals
+│   │       └── ws.py               # WebSocket stream pushing live alerts to desktop UI
 │   │        
-│   ├── config/                     # System-wide configuration configurations
+│   ├── config/                     # Global configuration management
 │   │   ├── __init__.py
-│   │   └── settings.py             # Global constants, database URIs, API timeouts, and environment loaders
+│   │   └── settings.py             # Centralized settings, PostgreSQL URIs, model paths, and poll intervals
 │   │
-│   ├── data/                       # Local volume directory for testing storage assets (Excluded from Git)
-│   │   ├── raw/                    # Temporary staging area for raw, uncleaned HTML extracts
-│   │   └── secure/                 # Local tracking storage logs or static testing fixture snapshots
-│   │
-│   ├── database/                   # Schema generation, migrations, and database interaction layer
+│   ├── database/                   # Database schemas, connections, and DAOs
 │   │   ├── __init__.py
-│   │   ├── connection.py           # Thread-safe PostgreSQL connection factory loops
-│   │   ├── schema.sql              # Core SQL table layouts, indexing scripts, and pgvector parameters
-│   │   └── queries.py              # Centralized data access objects (DAO) for transactional DB executions
+│   │   ├── connection.py           # Thread-safe PostgreSQL / asyncpg connection factory
+│   │   ├── schema.sql              # PostgreSQL DDL script with pgvector extension setup
+│   │   ├── queries.py              # Centralized SQL Data Access Objects (DAO)
+│   │   └── seed_tickers.py         # Script to seed initial VN30 / target market tickers
 │   │
-│   └── src/                        # Core application workspace
+│   └── src/                        # Core application business logic
 │        ├── __init__.py
 │        │
-│        ├── ingestion/              # Ticker ingestion processing layer
-│        │   ├── __init__.py
-│        │   ├── validator.py        # Cross-checks watchlists and strips invalid character arrays
-│        │   └── mapper.py           # Appends sector profiles and corporate identifier tokens to tickers
+│        ├── source_crawlers/       # Data fetching & normalization via web crawler
+│        │   └── __init__.py
 │        │
-│        ├── scraping/               # Web extraction engines
+│        ├── ingestion/              
 │        │   ├── __init__.py
-│        │   ├── base_scraper.py     # Base abstract class managing rotating headers, proxy pools, and rate-limiting
-│        │   ├── cafef.py            # Targeted extraction pipeline customized for CafeF news flows
-│        │   ├── vietstock.py        # Targeted extraction pipeline customized for Vietstock components
-│        │   └── deduplicator.py     # Cosine Similarity script validating text uniqueness
+│        │   ├── deduplicator.py     # SHA-256 cryptographic hashing logic for content deduplication
+│        │   └── mapper.py           # Maps raw crawled data outputs to database schema entities
 │        │
-│        ├── nlp/                    # Linguistic processing engine
+│        ├── nlp/                    # Linguistic processing & Vectorization engine
 │        │   ├── __init__.py
-│        │   ├── model_loader.py     # Manages GPU/CPU allocation and token caching for PhoBERT/ViFiNBERT
-│        │   └── sentiment.py        # Custom classification pipeline matching slang blocks to emotional polarity vectors
+│        │   ├── model_loader.py     # Manages PhoBERT/ViFiNBERT load states (CPU/GPU) & tokenization
+│        │   └── sentiment.py        # Maps financial news vectors to numerical sentiment scores
 │        │
-│        ├── matrix/                 # Strategic decision layer
+│        ├── matrix/                 # Strategic decision logic
 │        │   ├── __init__.py
-│        │   └── horizon_scorer.py   # Processes sentiment weight to derive Short, Medium, and Long-Term outputs
+│        │   └── horizon_scorer.py   # Processes sentiment vectors to produce Short, Medium, & Long-Term risk actions
 │        │
-│        └── alerts/                 # Downstream messaging systems
+│        └── alerts/                 # External alert engine
 │            ├── __init__.py
-│            └── telegram_bot.py     # Manages asynchronous webhook messaging loops passing target risk alerts
+│            └── telegram_bot.py     # Asynchronous Telegram notification sender
 │
 └── ui/                         # Rainmeter & Embedded Web Dashboard Package
-    ├── RiskDashboard.ini       # Rainmeter skin definition (Loads WebView2 plugin and transparent window frame)
-    └── www/                    # Web frontend assets rendered inside WebView2
-        ├── index.html          # Main HTML structure for desktop widget
+    ├── RiskDashboard.ini       # Rainmeter skin definition (Loads WebView2 transparent frame)
+    └── www/                    # UI assets rendered in WebView2
+        ├── index.html          # Desktop widget main layout
         ├── css/
-        │   └── styles.css      # Desktop skin styling (transparent backgrounds, glassmorphism UI)
+        │   └── styles.css      # Custom styling (glassmorphism UI)
         └── js/
-            ├── app.js          # API client handling REST calls and WebSocket streaming from FastAPI
-            └── chart.js        # TradingView Lightweight Charts & canvas rendering engine
+            ├── app.js          # REST and WebSocket client connected to FastAPI backend
+            └── chart.js        # Lightweight charts rendering engine
 ```
 
 ---
 
-## 3. Database Schema Overview (Conceptual Target)
-
-To visualize how your data pieces fit together inside PostgreSQL, here is the relational schema architecture:
+## 3. Database Schema Overview
 
 ### 3.1. Table: `tickers`
-Tracks your target watchlists and mapping metadata.
 * `id` (SERIAL, Primary Key)
-* `symbol` (VARCHAR(10), Unique, Indexed) - e.g., 'VPB', 'VNM'
+* `symbol` (VARCHAR(10), Unique, Indexed) — e.g., `'VPB'`, `'VNM'`
 * `company_name` (VARCHAR(255))
-* `sector` (VARCHAR(100)) - e.g., 'Banking', 'Consumer Goods'
-* `is_active` (BOOLEAN, Default True)
+* `sector` (VARCHAR(100))
+* `is_active` (BOOLEAN, Default `TRUE`)
 
 ### 3.2. Table: `news_articles`
-Stores raw extracted text and metadata scraped from local portals.
 * `id` (UUID, Primary Key)
 * `ticker_id` (INT, Foreign Key referencing `tickers.id`)
-* `source_url` (TEXT, Unique)
-* `publisher` (VARCHAR(100)) - e.g., 'CafeF', 'Vietstock'
+* `source_url` (TEXT)
+* `publisher` (VARCHAR(100)) — Extracted via `vnstock` payload metadata
 * `published_at` (TIMESTAMP With Time Zone)
 * `headline` (TEXT)
 * `raw_content` (TEXT)
-* `cleaned_content` (TEXT)
-* `content_hash` (VARCHAR(64)) - Used for LSH/Exact match checks
+* `content_hash` (VARCHAR(64), Unique, Indexed) — SHA-256 hex digest (`SHA256(headline + content)`) to block duplicate entries
 
 ### 3.3. Table: `risk_assessments`
-Houses the final quant data computed by your model matrix.
 * `id` (SERIAL, Primary Key)
 * `article_id` (UUID, Foreign Key referencing `news_articles.id`)
-* `embedding` (VECTOR(768)) - The PhoBERT/ViFiNBERT vector output for similarity searching
-* `sentiment_score` (NUMERIC(4,3)) - Bound from -1.000 (Very Bearish) to +1.000 (Very Bullish)
-* `horizon_short` (VARCHAR(20)) - BUY_ACCELERATION, SELL, NEUTRAL
-* `horizon_medium` (VARCHAR(20)) - ACCUMULATE, REDUCE, HOLD
-* `horizon_long` (VARCHAR(20)) - STRATEGIC_HOLD, REBALANCE
-* `confidence_score` (NUMERIC(4,3)) - 0.000 to 1.000 scale
-* `evaluated_at` (TIMESTAMP Default CURRENT_TIMESTAMP)
+* `embedding` (`VECTOR(768)`) — Dense vector representation generated by PhoBERT / ViFiNBERT
+* `sentiment_score` (NUMERIC(4,3)) — Bounded from `-1.000` (Bearish) to `+1.000` (Bullish)
+* `horizon_short` (VARCHAR(20)) — `BUY_ACCELERATION`, `SELL`, `NEUTRAL`
+* `horizon_medium` (VARCHAR(20)) — `ACCUMULATE`, `REDUCE`, `HOLD`
+* `horizon_long` (VARCHAR(20)) — `STRATEGIC_HOLD`, `REBALANCE`
+* `confidence_score` (NUMERIC(4,3)) — Model certainty score (`0.000` to `1.000`)
+* `evaluated_at` (TIMESTAMP Default `CURRENT_TIMESTAMP`)
