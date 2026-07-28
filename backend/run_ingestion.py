@@ -1,60 +1,65 @@
-import time
-from typing import Dict, List
+import asyncio
+import os
+import httpx
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
+from dotenv import load_dotenv
 
-# --- Import Seed Tickers ---
-from database.seed_tickers import INITIAL_TICKERS
+from src.source_crawlers.cafef_parser import fetch_cafef_urls, parse_cafef_article
+from database.queries import get_active_tickers_with_sources, save_articles
 
-# --- Import Modular Crawler Functions ---
-from src.source_crawlers.cafef import fetch_cafef_article_urls
-from src.source_crawlers.vietstock import fetch_vietstock_urls_authenticated
-from src.source_crawlers.stockbiz import fetch_stockbiz_article_urls
+load_dotenv()
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/marketeval")
 
 
-def run_url_discovery_pipeline() -> Dict[str, Dict[str, List[str]]]:
-    print("=" * 65)
-    print("🚀 STARTING TICKER URL POOL DISCOVERY PIPELINE")
-    print("=" * 65)
-    
-    pipeline_summary = {}
+async def main():
+    engine = create_async_engine(DATABASE_URL)
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-    for idx, item in enumerate(INITIAL_TICKERS, start=1):
-        symbol = item["symbol"]
-        company = item["company_name"]
-        print(f"\n[{idx}/{len(INITIAL_TICKERS)}] Processing Ticker: {symbol} ({company})")
+    async with async_session() as session:
+        # Fetch tickers with their specific CafeF URL from DB
+        tickers = await get_active_tickers_with_sources(session, publisher="CafeF")
+        if not tickers:
+            print("⚠️ No active tickers with CafeF sources found. Seed the DB first!")
+            return
 
-        # 1. CafeF Discovery
-        cafef_urls = fetch_cafef_article_urls(symbol)
-        print(f"  ├─ CafeF:     {len(cafef_urls)} URLs found")
-        time.sleep(0.5)
+        print("=" * 60)
+        print("🚀 STARTING CAFEF INGESTION PIPELINE")
+        print("=" * 60)
 
-        # 2. Vietstock Discovery (Auth / Handshake Flow)
-        vietstock_urls = fetch_vietstock_urls_authenticated(symbol)
-        print(f"  ├─ Vietstock: {len(vietstock_urls)} URLs found")
-        time.sleep(0.5)
+        async with httpx.AsyncClient(timeout=12.0, follow_redirects=True) as client:
+            for item in tickers:
+                ticker_id = item["id"]
+                symbol = item["symbol"]
+                pool_url = item["pool_url"]
+                
+                print(f"\n🔍 Processing CafeF for {symbol}...")
 
-        # 3. StockBiz Discovery
-        stockbiz_urls = fetch_stockbiz_article_urls(symbol)
-        print(f"  └─ StockBiz:  {len(stockbiz_urls)} URLs found")
-        time.sleep(0.5)
+                # 1. Discover URLs using DB source
+                urls = fetch_cafef_urls(pool_url)
+                print(f"  ├─ Discovered {len(urls)} URLs")
 
-        # Master Deduplicated Pool for this ticker
-        unique_ticker_urls = set(cafef_urls + vietstock_urls + stockbiz_urls)
+                # 2. Extract article contents
+                parsed_articles = []
+                for url in urls:
+                    art = await parse_cafef_article(client, url)
+                    if art:
+                        parsed_articles.append(art)
+                    await asyncio.sleep(0.3)
 
-        pipeline_summary[symbol] = {
-            "cafef": cafef_urls,
-            "vietstock": vietstock_urls,
-            "stockbiz": stockbiz_urls,
-            "all_unique": list(unique_ticker_urls)
-        }
+                print(f"  ├─ Successfully parsed {len(parsed_articles)} bodies")
 
-        print(f"  🎯 TOTAL UNIQUE URLs FOR {symbol}: {len(unique_ticker_urls)}")
+                # 3. Save to database
+                if parsed_articles:
+                    inserted = await save_articles(session, ticker_id, parsed_articles)
+                    print(f"  └─ 💾 Saved {inserted} NEW unique articles into PostgreSQL")
+                else:
+                    print(f"  └─ 💾 0 articles to save")
 
-    print("\n" + "=" * 65)
-    print("✅ URL POOL DISCOVERY COMPLETED")
-    print("=" * 65)
-
-    return pipeline_summary
-
+    await engine.dispose()
+    print("\n" + "=" * 60)
+    print("✅ CAFEF INGESTION COMPLETE")
+    print("=" * 60)
 
 if __name__ == "__main__":
-    results = run_url_discovery_pipeline()
+    asyncio.run(main())

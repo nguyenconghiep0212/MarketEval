@@ -9,7 +9,7 @@ load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/marketeval")
 
-from seed_tickers import INITIAL_TICKERS
+from database.seed_tickers import INITIAL_TICKERS
 
 async def seed_database():
     engine = create_async_engine(DATABASE_URL)
