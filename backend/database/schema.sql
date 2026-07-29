@@ -5,6 +5,7 @@ DROP TABLE IF EXISTS risk_assessments CASCADE;
 DROP TABLE IF EXISTS news_articles CASCADE;
 DROP TABLE IF EXISTS crawler_sources CASCADE;
 DROP TABLE IF EXISTS tickers CASCADE;
+DROP TABLE IF EXISTS article_attachments CASCADE;
 
 -- ==========================================
 -- STEP 2: ENABLE EXTENSIONS

@@ -27,7 +27,7 @@ def fetch_cafef_urls(pool_url: str) -> List[str]:
             raw_href = a_tag.get("href")
             print(f"  🔗 Raw CafeF link: {raw_href}")
             if raw_href:
-                full_url = urljoin("https://cafef.vn", raw_href.strip())
+                full_url = urljoin("https://cafef.vn", raw_href.strip()) # type: ignore
                 if full_url not in article_urls:
                     article_urls.append(full_url)
     except Exception as e:

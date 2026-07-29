@@ -15,9 +15,9 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres
 
 async def main():
     engine = create_async_engine(DATABASE_URL)
-    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False) # type: ignore
 
-    async with async_session() as session:
+    async with async_session() as session: # type: ignore
         # Fetch tickers with their specific CafeF URL from DB
         tickers = await get_active_tickers_with_sources(session, publisher="CafeF")
         if not tickers:
@@ -49,14 +49,14 @@ async def main():
                         art_id = await save_articles(session, ticker_id, art)
                         if art_id:
                             insert_article_count += 1
-                            print(f"  ├─ Successfully processed CafeF articles {url} for {symbol}")
+                            print(f"  ├─ Successfully processed CafeF Articles {url} for {symbol}")
                         if art_id and art.get("pdf_url"):
                             pdf_content = await download_and_extract_pdf(client, art_id, art["pdf_url"])
                             if pdf_content:
                                 pdf_id = await save_article_attachment(session, art_id, pdf_content)
                                 if pdf_id:
                                     insert_pdf_count += 1
-                                    print(f"  ├─ Successfully processed CafeF pdf {pdf_content['file_url']} for {symbol}")
+                                    print(f"  ├─ Successfully processed CafeF PDF {pdf_content['file_url']} for {symbol}")
                     await asyncio.sleep(0.3)
 
                 print(f"  ├─ Articles inserted: {insert_article_count}")

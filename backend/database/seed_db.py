@@ -13,9 +13,9 @@ from database.seed_tickers import INITIAL_TICKERS
 
 async def seed_database():
     engine = create_async_engine(DATABASE_URL)
-    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False) # type: ignore
 
-    async with async_session() as session:
+    async with async_session() as session: # type: ignore
         async with session.begin():
             print("🌱 Seeding Tickers and Crawler Sources...")
             

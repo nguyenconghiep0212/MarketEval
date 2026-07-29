@@ -96,7 +96,7 @@ async def save_articles(
     )
     
     # 2. Safely check if the database returned any rows before fetching
-    if result.returns_rows:
+    if result.returns_rows: # type: ignore
         row = result.fetchone()
         if row:
             inserted_id = row[0]
@@ -132,7 +132,7 @@ async def save_article_attachment(
         },
     )
 
-    if result.rowcount > 0:
+    if result.rowcount > 0: # type: ignore
         await session.commit()
         return article_id
     else:

@@ -5,6 +5,9 @@ from typing import Dict, Optional, Any
 import fitz
 import httpx
 from sqlalchemy import UUID
+import pdfplumber
+import io
+from docling.document_converter import DocumentConverter
 
 def generate_content_hash(headline: str, body: str) -> str:
     """Generates a SHA-256 fingerprint for article deduplication."""
@@ -65,14 +68,16 @@ async def download_and_extract_pdf(client: httpx.AsyncClient, article_id: UUID, 
             return None
 
         # Parse in-memory PDF bytes
-        doc = fitz.open(stream=res.content, filetype="pdf")
-        extracted_pages = []
-        for page in doc:
-            text = page.get_text("text").strip()
-            if text:
-                extracted_pages.append(text)
-
-        full_text = "\n\n".join(extracted_pages)
+        # doc = fitz.open(stream=res.content, filetype="pdf")
+        # extracted_pages = []
+        # for page in doc:
+        #     text = page.get_text("text").strip()
+        #     if text:
+        #         extracted_pages.append(text)
+        # full_text = "\n\n".join(extracted_pages)
+        
+        # Using docling for better extraction
+        full_text = convert_pdf_to_markdown(pdf_url)  
 
         if len(full_text.strip()) < 30:
             print(f"  ⚠️ PDF empty or scanned image without selectable text: {pdf_url}")
@@ -90,3 +95,20 @@ async def download_and_extract_pdf(client: httpx.AsyncClient, article_id: UUID, 
     except Exception as e:
         print(f"  ❌ Failed to download/parse PDF at {pdf_url}: {e}")
         return None
+    
+def extract_pdf_with_pdfplumber(pdf_bytes: bytes) -> str:
+    extracted_text = []
+    
+    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        for page in pdf.pages:
+            # layout=True maintains visual spatial layout (columns, tables)
+            text = page.extract_text(layout=True)
+            if text:
+                extracted_text.append(text)
+                
+    return "\n\n".join(extracted_text)
+
+def convert_pdf_to_markdown(pdf_path_or_url: str) -> str:
+    converter = DocumentConverter()
+    result = converter.convert(pdf_path_or_url)
+    return result.document.export_to_markdown()
