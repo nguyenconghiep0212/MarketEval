@@ -2,7 +2,7 @@ import httpx
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from typing import List, Optional, Dict, Any
-from src.source_crawlers.utils import generate_content_hash, parse_vietnamese_datetime
+from src.source_crawlers.utils import generate_content_hash, parse_datetime
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -75,8 +75,8 @@ async def parse_stockbiz_article(client: httpx.AsyncClient, url: str) -> Optiona
     
         headline = headline_el.get_text(strip=True)
         body = content_div.get_text(separator=" ", strip=True)
-        published_at = parse_vietnamese_datetime(date_el.get_text(strip=True)) if date_el else "Unknown"
-        pdf_url = urljoin("https://web.stockbiz.vn/", pdf_a["href"].strip()) if pdf_a else None
+        published_at = parse_datetime(date_el.get_text(strip=True)) if date_el else "Unknown"
+        pdf_url = urljoin("https://web.stockbiz.vn/", pdf_a["href"].strip()) if pdf_a else None  # type: ignore
 
         if not headline or len(body) < 50:
             print(f"  ⚠️ Parse failed (Content too short): {url}")
