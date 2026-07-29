@@ -50,7 +50,6 @@ async def parse_cafef_article(client: httpx.AsyncClient, url: str) -> Optional[D
 
         soup = BeautifulSoup(res.text, "lxml")
         
-        # Headline selectors including .text_noibat_cacbaikhac
         headline_el = (
             soup.select_one("h1.title") or 
             soup.select_one("h1.title-detail") or 
@@ -59,7 +58,6 @@ async def parse_cafef_article(client: httpx.AsyncClient, url: str) -> Optional[D
             soup.select_one("h1")
         )
         
-        # Date span selector
         date_el = (
             soup.select_one("#ContentPlaceHolder1_ChiTietTin1_NewsContent1_lblNgay") or
             soup.select_one("span.pdate") or
@@ -75,6 +73,10 @@ async def parse_cafef_article(client: httpx.AsyncClient, url: str) -> Optional[D
             soup.select_one(".totalcontentdetail") or 
             soup.select_one(".content")
         )
+        
+        pdf_a = (
+            soup.select_one("div.FileWrapper a[href$='.pdf']")
+        )
 
         if not headline_el or not content_div:
             print(f"  ⚠️ Parse failed (Missing layout tags): {url}")
@@ -86,6 +88,7 @@ async def parse_cafef_article(client: httpx.AsyncClient, url: str) -> Optional[D
         headline = headline_el.get_text(strip=True)
         body = content_div.get_text(separator=" ", strip=True)
         published_at = parse_vietnamese_datetime(date_el.get_text(strip=True)) if date_el else "Unknown"
+        pdf_url = pdf_a["href"] if pdf_a else None
 
         if not headline or len(body) < 50:
             print(f"  ⚠️ Parse failed (Content too short): {url}")
@@ -97,6 +100,7 @@ async def parse_cafef_article(client: httpx.AsyncClient, url: str) -> Optional[D
             "headline": headline,
             "raw_content": body,
             "published_at": published_at,
+            "pdf_url": pdf_url,
             "content_hash": generate_content_hash(headline, body)
         }
     except Exception as e:

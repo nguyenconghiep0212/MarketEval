@@ -6,7 +6,8 @@ from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
 
 from src.source_crawlers.cafef_parser import fetch_cafef_urls, parse_cafef_article
-from database.queries import get_active_tickers_with_sources, save_articles
+from database.queries import get_active_tickers_with_sources, save_articles, save_article_attachment
+from src.source_crawlers.utils import download_and_extract_pdf, generate_content_hash
 
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/marketeval")
@@ -39,22 +40,27 @@ async def main():
                 urls = fetch_cafef_urls(pool_url)
                 print(f"  ├─ Discovered {len(urls)} URLs")
 
-                # 2. Extract article contents
-                parsed_articles = []
+                # 2. Extract article contents and save to DB
+                insert_article_count = 0
+                insert_pdf_count = 0
                 for url in urls:
                     art = await parse_cafef_article(client, url)
                     if art:
-                        parsed_articles.append(art)
+                        art_id = await save_articles(session, ticker_id, art)
+                        if art_id:
+                            insert_article_count += 1
+                            print(f"  ├─ Successfully processed CafeF articles {url} for {symbol}")
+                        if art_id and art.get("pdf_url"):
+                            pdf_content = await download_and_extract_pdf(client, art_id, art["pdf_url"])
+                            if pdf_content:
+                                pdf_id = await save_article_attachment(session, art_id, pdf_content)
+                                if pdf_id:
+                                    insert_pdf_count += 1
+                                    print(f"  ├─ Successfully processed CafeF pdf {pdf_content['file_url']} for {symbol}")
                     await asyncio.sleep(0.3)
 
-                print(f"  ├─ Successfully parsed {len(parsed_articles)} bodies")
-
-                # 3. Save to database
-                if parsed_articles:
-                    inserted = await save_articles(session, ticker_id, parsed_articles)
-                    print(f"  └─ 💾 Saved {inserted} NEW unique articles into PostgreSQL")
-                else:
-                    print(f"  └─ 💾 0 articles to save")
+                print(f"  ├─ Articles inserted: {insert_article_count}")
+                print(f"  └─ PDFs inserted: {insert_pdf_count}")
 
     await engine.dispose()
     print("\n" + "=" * 60)

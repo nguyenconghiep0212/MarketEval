@@ -1,13 +1,11 @@
 from typing import Optional, List, Dict, Any
+import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
+from sqlalchemy import UUID, text
 
 
 async def upsert_ticker(
-    session: AsyncSession,
-    symbol: str,
-    company_name: str,
-    sector: Optional[str] = None
+    session: AsyncSession, symbol: str, company_name: str, sector: Optional[str] = None
 ) -> None:
     """Inserts or updates a ticker record in the database."""
     query = text("""
@@ -21,13 +19,15 @@ async def upsert_ticker(
     """)
     await session.execute(
         query,
-        {"symbol": symbol.upper(), "company_name": company_name, "sector": sector}
+        {"symbol": symbol.upper(), "company_name": company_name, "sector": sector},
     )
 
 
 async def get_active_tickers(session: AsyncSession) -> List[Dict[str, Any]]:
     """Retrieves all active tickers from the database as a list of dictionaries."""
-    query = text("SELECT id, symbol, company_name, sector FROM tickers WHERE is_active = TRUE")
+    query = text(
+        "SELECT id, symbol, company_name, sector FROM tickers WHERE is_active = TRUE"
+    )
     result = await session.execute(query)
     rows = result.mappings().all()
     return [dict(row) for row in rows]
@@ -43,45 +43,16 @@ async def get_ticker_id_by_symbol(session: AsyncSession, symbol: str) -> Optiona
 
 async def is_content_hash_duplicate(session: AsyncSession, content_hash: str) -> bool:
     """Checks if an article with the given content hash already exists."""
-    query = text("SELECT EXISTS(SELECT 1 FROM news_articles WHERE content_hash = :hash)")
+    query = text(
+        "SELECT EXISTS(SELECT 1 FROM news_articles WHERE content_hash = :hash)"
+    )
     result = await session.execute(query, {"hash": content_hash})
     return bool(result.scalar())
 
 
-async def insert_news_article(
-    session: AsyncSession,
-    ticker_id: Optional[int],
-    source_url: str,
-    publisher: str,
-    published_at: Any,
-    headline: str,
-    raw_content: str,
-    cleaned_content: str,
-    content_hash: str,
-) -> None:
-    """Inserts a new news article into the database."""
-    query = text("""
-        INSERT INTO news_articles (
-            ticker_id, source_url, publisher, published_at, headline, raw_content, cleaned_content, content_hash
-        ) VALUES (
-            :ticker_id, :source_url, :publisher, :published_at, :headline, :raw_content, :cleaned_content, :content_hash
-        ) ON CONFLICT (source_url) DO NOTHING;
-    """)
-    await session.execute(
-        query,
-        {
-            "ticker_id": ticker_id,
-            "source_url": source_url,
-            "publisher": publisher,
-            "published_at": published_at,
-            "headline": headline,
-            "raw_content": raw_content,
-            "cleaned_content": cleaned_content,
-            "content_hash": content_hash,
-        }
-    )
-    
-async def get_active_tickers_with_sources(session: AsyncSession, publisher: str) -> List[Dict[str, Any]]:
+async def get_active_tickers_with_sources(
+    session: AsyncSession, publisher: str
+) -> List[Dict[str, Any]]:
     """Fetches active tickers and their specific pool_url for a given publisher."""
     query = text("""
         SELECT t.id, t.symbol, cs.pool_url
@@ -90,36 +61,80 @@ async def get_active_tickers_with_sources(session: AsyncSession, publisher: str)
         WHERE t.is_active = TRUE AND cs.publisher = :publisher
     """)
     res = await session.execute(query, {"publisher": publisher})
-    return [{"id": row.id, "symbol": row.symbol, "pool_url": row.pool_url} for row in res.fetchall()]
+    return [
+        {"id": row.id, "symbol": row.symbol, "pool_url": row.pool_url}
+        for row in res.fetchall()
+    ]
 
 
-async def save_articles(session: AsyncSession, ticker_id: int, articles: List[Dict[str, Any]]) -> int:
+async def save_articles(
+    session: AsyncSession, ticker_id: int, article: Dict[str, Any]
+) -> Optional[UUID]:
     """
     Inserts parsed articles into news_articles using ON CONFLICT DO NOTHING.
     Logs any article that was parsed but skipped as a duplicate.
     """
     query = text("""
-        INSERT INTO news_articles (ticker_id, source_url, publisher, headline, raw_content, content_hash, published_at)
-        VALUES (:ticker_id, :source_url, :publisher, :headline, :raw_content, :content_hash, :published_at)
+        INSERT INTO news_articles (ticker_id, source_url, publisher, headline, raw_content, pdf_url, content_hash, published_at)
+        VALUES (:ticker_id, :source_url, :publisher, :headline, :raw_content, :pdf_url, :content_hash, :published_at)
+        ON CONFLICT (content_hash) DO NOTHING
+        RETURNING id;
+    """)
+
+    result = await session.execute(
+        query,
+        {
+            "ticker_id": ticker_id,
+            "source_url": article["source_url"],
+            "publisher": article["publisher"],
+            "headline": article["headline"],
+            "raw_content": article["raw_content"],
+            "pdf_url": article["pdf_url"],
+            "content_hash": article["content_hash"],
+            "published_at": article.get("published_at"),
+        },
+    )
+    
+    # 2. Safely check if the database returned any rows before fetching
+    if result.returns_rows:
+        row = result.fetchone()
+        if row:
+            inserted_id = row[0]
+            # print(f"Inserted ID: {inserted_id}")
+            return inserted_id
+            
+    # 3. If no rows were returned, it means ON CONFLICT DO NOTHING caught a duplicate
+    print(f"  ⏭️ Parsed but skipped (Already in DB): {article['source_url']}")
+    return None
+
+
+async def save_article_attachment(
+    session: AsyncSession, article_id: UUID, pdf_data: Dict[str, Any]
+) -> Optional[UUID]:
+    """
+    Inserts a single PDF attachment linked to an article_id.
+    Returns the number of inserted rows.
+    """
+    query = text("""
+        INSERT INTO article_attachments (article_id, file_url, file_name, raw_content, content_hash)
+        VALUES (:article_id, :file_url, :file_name, :raw_content, :content_hash)
         ON CONFLICT (content_hash) DO NOTHING;
     """)
 
-    inserted_count = 0
-    for art in articles:
-        result = await session.execute(query, {
-            "ticker_id": ticker_id,
-            "source_url": art["source_url"],
-            "publisher": art["publisher"],
-            "headline": art["headline"],
-            "raw_content": art["raw_content"],
-            "content_hash": art["content_hash"],
-            "published_at": art.get("published_at")
-        })
-        
-        if result.rowcount > 0:
-            inserted_count += 1
-        else:
-            print(f"  ⏭️ Parsed but skipped (Already in DB): {art['source_url']}")
+    result = await session.execute(
+        query,
+        {
+            "article_id": article_id,
+            "file_url": pdf_data["file_url"],
+            "file_name": pdf_data["file_name"],
+            "raw_content": pdf_data["raw_content"],
+            "content_hash": pdf_data["content_hash"],
+        },
+    )
 
-    await session.commit()
-    return inserted_count
+    if result.rowcount > 0:
+        await session.commit()
+        return article_id
+    else:
+        print(f"  ⏭️ Parsed but skipped (Already in DB): {pdf_data['file_url']}")
+        return None

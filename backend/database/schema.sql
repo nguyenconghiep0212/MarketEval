@@ -47,10 +47,11 @@ CREATE TABLE news_articles (
     published_at TIMESTAMP WITH TIME ZONE,
     headline TEXT NOT NULL,
     raw_content TEXT,
+    pdf_url TEXT,
     content_hash VARCHAR(64) UNIQUE NOT NULL,             -- SHA-256 (headline + body)
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
-
+ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS pdf_url TEXT;
 CREATE INDEX idx_news_ticker_published ON news_articles(ticker_id, published_at DESC);
 
 -- 4. Risk Assessments Table
@@ -69,3 +70,16 @@ CREATE TABLE risk_assessments (
 -- 5. HNSW Vector Index for Fast K-NN Searches
 CREATE INDEX idx_risk_embedding ON risk_assessments 
 USING hnsw (embedding vector_cosine_ops);
+
+-- 6. Article Attachments Table
+CREATE TABLE IF NOT EXISTS article_attachments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    article_id UUID NOT NULL REFERENCES news_articles(id) ON DELETE CASCADE,
+    file_url TEXT NOT NULL,
+    file_name TEXT,
+    raw_content TEXT NOT NULL,
+    content_hash VARCHAR(64) UNIQUE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_attachments_article_id ON article_attachments(article_id);
