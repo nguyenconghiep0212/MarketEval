@@ -100,6 +100,7 @@ async def save_articles(
         row = result.fetchone()
         if row:
             inserted_id = row[0]
+            await session.commit()
             # print(f"Inserted ID: {inserted_id}")
             return inserted_id
             

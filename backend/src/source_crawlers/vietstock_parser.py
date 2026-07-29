@@ -1,7 +1,7 @@
 import httpx
 from bs4 import BeautifulSoup
 from typing import List, Optional, Dict
-from crawlers.utils import generate_content_hash
+from src.source_crawlers.utils import generate_content_hash
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
