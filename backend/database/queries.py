@@ -1,7 +1,6 @@
 from typing import Optional, List, Dict, Any
-import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import UUID, text
+from sqlalchemy import UUID, text, bindparam
 
 
 async def upsert_ticker(
@@ -145,3 +144,31 @@ async def is_article_hash_exists(session: AsyncSession, content_hash: str) -> bo
     query = text("SELECT 1 FROM news_articles WHERE content_hash = :content_hash LIMIT 1;")
     result = await session.execute(query, {"content_hash": content_hash})
     return result.scalar() is not None
+
+async def get_unprocessed_pdf_articles(
+    session: AsyncSession, ticker_symbol: List[str]
+) -> List[Dict[str, Any]]:
+    """Fetches news_articles that have a pdf_url but haven't been processed into article_attachments yet."""
+    
+    # Note: No parentheses around :symbols when using expanding=True
+    query = text("""
+        SELECT 
+            na.id AS article_id,
+            na.ticker_id,
+            na.pdf_url,
+            na.is_pdf_download_url,
+            na.headline
+        FROM news_articles na
+        JOIN tickers t ON na.ticker_id = t.id
+        LEFT JOIN article_attachments aa ON aa.article_id = na.id
+        WHERE t.symbol IN :symbols
+          AND na.pdf_url IS NOT NULL
+          AND aa.id IS NULL
+    """).bindparams(bindparam("symbols", expanding=True))
+    
+    # Pass a LIST [str] instead of a tuple
+    symbols_list = [ts.upper() for ts in ticker_symbol]
+    result = await session.execute(query, {"symbols": symbols_list})
+    
+    rows = result.mappings().all()
+    return [dict(row) for row in rows]

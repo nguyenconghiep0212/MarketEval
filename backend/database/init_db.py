@@ -20,7 +20,7 @@ def init_db():
             with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
                 schema_sql = f.read()
             
-            cur.execute(sql.SQL(schema_sql))
+            cur.execute(sql.SQL(schema_sql)) # type: ignore
             conn.commit()
     print("✅ Database initialized successfully with pgvector support!")
 

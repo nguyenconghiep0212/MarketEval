@@ -55,6 +55,8 @@ async def main():
                             insert_article_count += 1
                             now_str = datetime.now().strftime("%H:%M:%S.%f")[:-3]
                             print(f"[{now_str}]   ├─ Successfully processed CafeF Article {url} for {symbol}")
+                            if art.get("pdf_url"): 
+                                insert_pdf_count += 1
                         # if art_id and art.get("pdf_url"):
                         #     pdf_content = await download_and_extract_pdf(client, art_id, art["pdf_url"])
                         #     if pdf_content:
@@ -66,7 +68,7 @@ async def main():
                     await asyncio.sleep(0.3)
 
                 print(f"  ├─ Articles inserted: {insert_article_count}")
-                print(f"  └─ PDFs inserted: {insert_pdf_count}")
+                print(f"  └─ PDFs detected: {insert_pdf_count}")
 
     await engine.dispose()
     print("\n" + "=" * 60)

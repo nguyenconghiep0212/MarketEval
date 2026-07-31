@@ -89,6 +89,7 @@ async def parse_stockbiz_article(client: httpx.AsyncClient, url: str) -> Optiona
             "raw_content": body,
             "published_at": published_at,
             "pdf_url": pdf_url,
+            "is_pdf_download_url": True,
             "content_hash": generate_content_hash(headline, body)
         }
     except Exception as e:

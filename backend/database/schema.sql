@@ -49,6 +49,7 @@ CREATE TABLE news_articles (
     headline TEXT NOT NULL,
     raw_content TEXT,
     pdf_url TEXT,
+    is_pdf_download_url Boolean DEFAULT FALSE,
     content_hash VARCHAR(64) UNIQUE NOT NULL,             -- SHA-256 (headline + body)
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -84,3 +85,4 @@ CREATE TABLE IF NOT EXISTS article_attachments (
 );
 
 CREATE INDEX IF NOT EXISTS idx_attachments_article_id ON article_attachments(article_id);
+
