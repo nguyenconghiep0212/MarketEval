@@ -55,14 +55,14 @@ async def main():
                             insert_article_count += 1
                             now_str = datetime.now().strftime("%H:%M:%S.%f")[:-3]
                             print(f"[{now_str}]   ├─ Successfully processed CafeF Article {url} for {symbol}")
-                        if art_id and art.get("pdf_url"):
-                            pdf_content = await download_and_extract_pdf(client, art_id, art["pdf_url"])
-                            if pdf_content:
-                                pdf_id = await save_article_attachment(session, art_id, pdf_content)
-                                if pdf_id:
-                                    insert_pdf_count += 1
-                                    now_str = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-                                    print(f"[{now_str}]   ├─ Successfully processed CafeF PDF {pdf_content['file_url']} for {symbol}")
+                        # if art_id and art.get("pdf_url"):
+                        #     pdf_content = await download_and_extract_pdf(client, art_id, art["pdf_url"])
+                        #     if pdf_content:
+                        #         pdf_id = await save_article_attachment(session, art_id, pdf_content)
+                        #         if pdf_id:
+                        #             insert_pdf_count += 1
+                        #             now_str = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+                        #             print(f"[{now_str}]   ├─ Successfully processed CafeF PDF {pdf_content['file_url']} for {symbol}")
                     await asyncio.sleep(0.3)
 
                 print(f"  ├─ Articles inserted: {insert_article_count}")
