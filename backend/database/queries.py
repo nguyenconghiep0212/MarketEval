@@ -139,3 +139,9 @@ async def save_article_attachment(
     else:
         print(f"  ⏭️ Parsed but skipped (Already in DB): {pdf_data['file_url']}")
         return None
+    
+async def is_article_hash_exists(session: AsyncSession, content_hash: str) -> bool:
+    """Checks if an article with the exact normalized content hash already exists."""
+    query = text("SELECT 1 FROM news_articles WHERE content_hash = :content_hash LIMIT 1;")
+    result = await session.execute(query, {"content_hash": content_hash})
+    return result.scalar() is not None

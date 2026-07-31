@@ -2,7 +2,7 @@ import httpx
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from typing import List, Optional, Dict, Any
-from backend.src.source_crawlers.utils import generate_content_hash, parse_datetime
+from src.source_crawlers.utils import generate_content_hash, parse_datetime
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -51,9 +51,9 @@ async def parse_cafef_article(client: httpx.AsyncClient, url: str) -> Optional[D
         soup = BeautifulSoup(res.text, "lxml")
         
         headline_el = (
+            soup.select_one(".text_noibat_cacbaikhac") or
             soup.select_one("h1.title") or 
             soup.select_one("h1.title-detail") or 
-            soup.select_one(".text_noibat_cacbaikhac") or
             soup.select_one(".news-title") or 
             soup.select_one("h1")
         )
@@ -67,9 +67,9 @@ async def parse_cafef_article(client: httpx.AsyncClient, url: str) -> Optional[D
         )
         
         content_div = (
+            soup.select_one("#newscontent > .content:first-child") or 
             soup.select_one(".knc-content") or 
             soup.select_one(".detail-content") or 
-            soup.select_one("#newscontent") or 
             soup.select_one(".totalcontentdetail") or 
             soup.select_one(".content")
         )

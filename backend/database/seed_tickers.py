@@ -4,9 +4,9 @@ from database.queries import upsert_ticker
 
 INITIAL_TICKERS = [
     {"symbol": "PNJ", "company_name": "Phu Nhuan Jewelry JSC", "sector": "Consumer Goods / Retail"},
-    {"symbol": "VNM", "company_name": "Vinamilk", "sector": "Consumer Goods / Dairy"},
-    {"symbol": "BID", "company_name": "BIDV Bank", "sector": "Banking"},
-    {"symbol": "POW", "company_name": "PetroVietnam Power", "sector": "Utilities / Energy"},
+    # {"symbol": "VNM", "company_name": "Vinamilk", "sector": "Consumer Goods / Dairy"},
+    # {"symbol": "BID", "company_name": "BIDV Bank", "sector": "Banking"},
+    # {"symbol": "POW", "company_name": "PetroVietnam Power", "sector": "Utilities / Energy"},
     # {"symbol": "HPG", "company_name": "Hoa Phat Group", "sector": "Materials / Steel"},
     # {"symbol": "VIC", "company_name": "Vingroup JSC", "sector": "Real Estate"},
     # {"symbol": "SSI", "company_name": "SSI Securities", "sector": "Financial Services"},
