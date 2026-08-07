@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
 
 from src.source_crawlers.stockbiz_parser import fetch_stockbiz_urls, parse_stockbiz_article
-from database.queries import get_active_tickers_with_sources, is_article_hash_exists, save_articles, save_article_attachment
+from database.queries import get_active_tickers_with_sources, is_article_hash_exists, save_articles
 from src.source_crawlers.utils import download_and_extract_pdf
 
 load_dotenv()
@@ -57,14 +57,6 @@ async def main():
                             print(f"[{now_str}]   ├─ Successfully processed StockBiz Article {url} for {symbol}")
                             if art.get("pdf_url"): 
                                 insert_pdf_count += 1
-                            # if art_id and art.get("pdf_url"):
-                            #     pdf_content = await download_and_extract_pdf(client, art_id, art["pdf_url"], True)
-                            #     if pdf_content:
-                            #         pdf_id = await save_article_attachment(session, art_id, pdf_content)
-                            #         if pdf_id:
-                            #             insert_pdf_count += 1
-                            #             now_str = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-                            #             print(f"[{now_str}]   ├─ Successfully processed StockBiz PDF {pdf_content['file_url']} for {symbol}")
                     await asyncio.sleep(0.3)
 
                 print(f"  ├─ Articles inserted: {insert_article_count}")
