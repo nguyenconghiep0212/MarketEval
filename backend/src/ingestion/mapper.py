@@ -1,8 +1,8 @@
 import re
 from typing import Optional, List
 from sqlalchemy import text
-from database.connection import AsyncSessionLocal
-from database.queries import get_active_tickers
+from backend.database.connection import AsyncSessionLocal
+from backend.database.queries import get_active_tickers
 
 
 class TickerMapper:

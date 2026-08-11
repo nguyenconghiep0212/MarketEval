@@ -1,6 +1,6 @@
 import asyncio
-from database.connection import AsyncSessionLocal
-from database.queries import upsert_ticker
+from backend.database.connection import AsyncSessionLocal
+from backend.database.queries import upsert_ticker
 
 INITIAL_TICKERS = [
     {"symbol": "PNJ", "company_name": "Phu Nhuan Jewelry JSC", "sector": "Consumer Goods / Retail"},

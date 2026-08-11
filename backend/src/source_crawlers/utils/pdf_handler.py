@@ -1,8 +1,7 @@
-from src.source_crawlers.utils.generate_content_hash import generate_content_hash
+from backend.src.source_crawlers.utils.generate_content_hash import generate_content_hash
 from typing import Dict, Optional, Any
 import fitz
 import httpx
-from sqlalchemy import UUID
 import io
 from docling.document_converter import DocumentConverter
 from docling.datamodel.base_models import DocumentStream
@@ -51,7 +50,6 @@ doc_converter = DocumentConverter(
 
 async def download_and_extract_pdf(
     client: httpx.AsyncClient,
-    article_id: UUID,
     pdf_url: str,
     is_download_url: bool = False,
 ) -> Optional[Dict[str, Any]]:
@@ -84,7 +82,6 @@ async def download_and_extract_pdf(
         filename = pdf_url.split("/")[-1].split("?")[0]
 
         return {
-            "article_id": article_id,
             "file_url": pdf_url,
             "file_name": filename,
             "raw_content": full_text,

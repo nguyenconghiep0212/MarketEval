@@ -9,7 +9,7 @@ load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/marketeval")
 
-from database.seed_tickers import INITIAL_TICKERS
+from backend.database.seed_tickers import INITIAL_TICKERS
 
 async def seed_database():
     engine = create_async_engine(DATABASE_URL)
@@ -40,7 +40,8 @@ async def seed_database():
                 sources = [
                     ("CafeF", f"https://cafef.vn/du-lieu/tin-doanh-nghiep/{symbol.lower()}/event.chn"),
                     ("Vietstock", f"https://finance.vietstock.vn/{symbol.upper()}/tin-tuc-su-kien.htm"),
-                    ("StockBiz", f"https://web.stockbiz.vn/Stocks/{symbol.upper()}/CompanyNews.aspx")
+                    ("StockBiz", f"https://web.stockbiz.vn/Stocks/{symbol.upper()}/CompanyNews.aspx"),
+                    ("StockBiz_Financial_Report", f"https://web.stockbiz.vn/Stocks/{symbol.upper()}/CompanyReports.aspx")
                 ]
 
                 for publisher, pool_url in sources:

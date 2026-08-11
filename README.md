@@ -118,4 +118,4 @@ Re-open `pg_hba.conf`, change `trust` back to `scram-sha-256` or `md5`, save the
 ========================================================
 
 Remember to run .\backend\database\init_db.py
-python -m database.init_db.py
+python -m backend.database.init_db.py

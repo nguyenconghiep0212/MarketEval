@@ -1,7 +1,7 @@
 import httpx
 from bs4 import BeautifulSoup
 from typing import List, Optional, Dict, Any
-from src.source_crawlers.utils import generate_content_hash, parse_datetime
+from backend.src.source_crawlers.utils import generate_content_hash, parse_datetime
 from playwright.async_api import async_playwright
 from datetime import datetime
 from pydantic import BaseModel
@@ -121,7 +121,7 @@ async def parse_vietstock_article(
 
         headline = headline_el.get_text(strip=True)
         body = " ".join([content.get_text(separator=" ", strip=True) for content in content_div])
-        published_at = parse_datetime(date_el.get_text(strip=True)) if date_el else "Unknown"
+        published_at = parse_datetime(date_el.get_text(strip=True)) if date_el else datetime.now()
         
         if pdf_url and pdf_url.get("href"):
             raw_href = str(pdf_url["href"]).strip()
@@ -129,6 +129,7 @@ async def parse_vietstock_article(
             pdf_url = f"https://vietstock.vn{raw_href}" if raw_href.startswith("/") else raw_href
        
         if not headline or not body:
+            print(f"  ⚠️ Parse failed (Missing layout tags): {url}")
             return None
 
         return {

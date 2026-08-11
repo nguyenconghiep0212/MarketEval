@@ -12,10 +12,32 @@ Implement vnstock_client.py to poll financial news and market disclosures system
 Build the SHA-256 deduplicator.py pipeline to hash incoming news blocks and verify uniqueness against content_hash indexes before writing to PostgreSQL.
 Set up APScheduler loops inside FastAPI to keep data fetching running automatically in the background.
 
+
 #### Phase 3: Intelligence Layer (NLP & Vectorization)
 Integrate PhoBERT or ViFiNBERT model loaders using PyTorch and Hugging Face.
 Implement text vectorization to store 768-dimensional embeddings into PostgreSQL pgvector columns.
 Develop the sentiment analysis classifier to produce bounded scores (-1.0 to +1.0).
+                           ┌────────────────────────┐
+                           │ Raw Articles & PDFs    │
+                           └───────────┬────────────┘
+                                       │
+                           ┌───────────▼────────────┐
+                           │  src/intelligence/     │
+                           │     text_chunker.py    │
+                           └───────────┬────────────┘
+                                       │
+                     ┌─────────────────┴─────────────────┐
+                     ▼                                   ▼
+          ┌─────────────────────┐             ┌─────────────────────┐
+          │   embeddings.py     │             │    sentiment.py     │
+          │ (PhoBERT Bi-Encoder)│             │ (ViFiNBERT / Model) │
+          └──────────┬──────────┘             └──────────┬──────────┘
+                     │ (768-dim Vector)                  │ (-1.0 to +1.0)
+                     └─────────────────┬─────────────────┘
+                                       │
+                           ┌───────────▼────────────┐
+                           │ PostgreSQL + pgvector  │
+                           └────────────────────────┘
 
 #### Phase 4: Decision Matrix & Risk Assessment
 Write horizon_scorer.py logic to evaluate historical vector trends and sentiment scores.

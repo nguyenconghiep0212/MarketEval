@@ -6,9 +6,9 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
 
-from src.source_crawlers.cafef_parser import fetch_cafef_urls, parse_cafef_article
-from database.queries import get_active_tickers_with_sources, is_article_hash_exists, save_articles
-from src.source_crawlers.utils import download_and_extract_pdf, generate_content_hash
+from backend.src.source_crawlers.cafef_parser import fetch_cafef_urls, parse_cafef_article
+from backend.database.queries import get_active_tickers_with_sources, is_article_hash_exists, save_articles
+from backend.src.source_crawlers.utils import download_and_extract_pdf, generate_content_hash
 
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/marketeval")

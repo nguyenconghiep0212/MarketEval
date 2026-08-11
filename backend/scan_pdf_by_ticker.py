@@ -7,8 +7,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-from database.queries import get_unprocessed_pdf_articles, save_article_attachment
-from src.source_crawlers.utils.pdf_handler import download_and_extract_pdf
+from backend.database.queries import get_unprocessed_pdf_articles, save_article_attachment
+from backend.src.source_crawlers.utils.pdf_handler import download_and_extract_pdf
 
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/marketeval")
@@ -31,19 +31,35 @@ async def main():
         
         async with httpx.AsyncClient(timeout=12.0, follow_redirects=True) as client:
             for pdf_url in pdf_urls:
-                art_id = pdf_url["article_id"]
+                parent_type = pdf_url["parent_type"]
+                parent_id = pdf_url["parent_id"]
                 symbol = pdf_url["ticker_id"]
                 pdf_url_value = pdf_url["pdf_url"]
                 is_pdf_download_url = pdf_url["is_pdf_download_url"]
                 
                 print(f"\n🔍 Processing PDF {pdf_url_value} for {symbol}...")
 
-                pdf_processed_content = await download_and_extract_pdf(client, art_id, pdf_url_value, is_pdf_download_url)
+                pdf_processed_content = await download_and_extract_pdf(client, pdf_url_value, is_pdf_download_url)
                 print(f"  ├─ Process {pdf_url_value} successfully")
 
                 insert_pdf_count = 0
                 if pdf_processed_content:
-                    pdf_id = await save_article_attachment(session, art_id, pdf_processed_content)
+                    if parent_type == "news":
+                        pdf_id = await save_article_attachment(
+                            session,
+                            pdf_processed_content,
+                            news_article_id=parent_id,
+                        )
+                    elif parent_type == "financial":
+                        pdf_id = await save_article_attachment(
+                            session,
+                            pdf_processed_content,
+                            financial_analysis_id=parent_id,
+                        )
+                    else:
+                        print(f"  ⚠️ Unknown parent_type '{parent_type}', skipped: {pdf_url_value}")
+                        pdf_id = None
+
                     if pdf_id:
                         insert_pdf_count += 1
                         now_str = datetime.now().strftime("%H:%M:%S.%f")[:-3]

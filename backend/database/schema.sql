@@ -6,6 +6,7 @@ DROP TABLE IF EXISTS news_articles CASCADE;
 DROP TABLE IF EXISTS crawler_sources CASCADE;
 DROP TABLE IF EXISTS tickers CASCADE;
 DROP TABLE IF EXISTS article_attachments CASCADE;
+DROP TABLE IF EXISTS financial_analysis_articles CASCADE;
 
 -- ==========================================
 -- STEP 2: ENABLE EXTENSIONS
@@ -73,16 +74,38 @@ CREATE TABLE risk_assessments (
 CREATE INDEX idx_risk_embedding ON risk_assessments 
 USING hnsw (embedding vector_cosine_ops);
 
--- 6. Article Attachments Table
+
+-- 6. Financial analysis articles table
+CREATE TABLE financial_analysis_articles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ticker_id INT REFERENCES tickers(id) ON DELETE CASCADE,
+    source_url TEXT,
+    publisher VARCHAR(100),                              
+    published_at TIMESTAMP WITH TIME ZONE,
+    headline TEXT NOT NULL,
+    raw_content TEXT,
+    pdf_url TEXT,
+    is_pdf_download_url Boolean DEFAULT FALSE,
+    content_hash VARCHAR(64) UNIQUE NOT NULL,             -- SHA-256 (headline + body)
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_financial_analysis_ticker_published ON financial_analysis_articles(ticker_id, published_at DESC);
+
+-- 7. Article Attachments Table
 CREATE TABLE IF NOT EXISTS article_attachments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    article_id UUID NOT NULL REFERENCES news_articles(id) ON DELETE CASCADE,
+    news_article_id UUID REFERENCES news_articles(id) ON DELETE CASCADE,
+    financial_analysis_id UUID REFERENCES financial_analysis_articles(id) ON DELETE CASCADE,
     file_url TEXT NOT NULL,
     file_name TEXT,
     raw_content TEXT NOT NULL,
     content_hash VARCHAR(64) UNIQUE NOT NULL,
+    CONSTRAINT chk_article_attachments_single_parent CHECK (
+        (news_article_id IS NOT NULL AND financial_analysis_id IS NULL)
+        OR (news_article_id IS NULL AND financial_analysis_id IS NOT NULL)
+    ),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_attachments_article_id ON article_attachments(article_id);
-
+CREATE INDEX IF NOT EXISTS idx_attachments_news_article_id ON article_attachments(news_article_id);
+CREATE INDEX IF NOT EXISTS idx_attachments_financial_analysis_id ON article_attachments(financial_analysis_id);
