@@ -100,12 +100,10 @@ async def save_articles(
         row = result.fetchone()
         if row:
             inserted_id = row[0]
-            await session.commit()
             # print(f"Inserted ID: {inserted_id}")
             return inserted_id
             
-    # 3. If no rows were returned, it means ON CONFLICT DO NOTHING caught a duplicate
-    print(f"  ⏭️ Parsed but skipped (Already in DB): {article['source_url']}")
+    # 3. If no rows were returned, ON CONFLICT DO NOTHING caught a duplicate
     return None
 
 async def save_financial_report(
@@ -142,12 +140,10 @@ async def save_financial_report(
         row = result.fetchone()
         if row:
             inserted_id = row[0]
-            await session.commit()
             # print(f"Inserted ID: {inserted_id}")
             return inserted_id
             
-    # 3. If no rows were returned, it means ON CONFLICT DO NOTHING caught a duplicate
-    print(f"  ⏭️ Parsed but skipped (Already in DB): {financial_report['source_url']}")
+    # 3. If no rows were returned, ON CONFLICT DO NOTHING caught a duplicate
     return None
 
 

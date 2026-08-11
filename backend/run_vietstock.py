@@ -7,11 +7,11 @@ from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
 
 from backend.src.source_crawlers.vietstock_parser import fetch_vietstock_urls, parse_vietstock_article
-from backend.database.queries import get_active_tickers_with_sources, is_article_hash_exists, save_articles
-from backend.src.source_crawlers.utils import download_and_extract_pdf, generate_content_hash
+from backend.database.queries import get_active_tickers_with_sources, save_articles
 
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/marketeval")
+REQUEST_DELAY_SECONDS = 0.1
 
 
 async def main():
@@ -44,14 +44,12 @@ async def main():
                 # 2. Extract article contents and save to DB
                 insert_article_count = 0
                 insert_pdf_count = 0
+                duplicate_skip_count = 0
                 for item in obj:
                     url = item.url
                     published_date = item.published_date or datetime.now()
                     art = await parse_vietstock_article(client, published_date, url)
                     if art:
-                        if await is_article_hash_exists(session, art["content_hash"]):
-                            print(f"  ⏭️ Duplicate content detected across publishers for {url}. Skipping completely!")
-                            continue  
                         art_id = await save_articles(session, ticker_id, art)
                         if art_id:
                             insert_article_count += 1
@@ -59,9 +57,15 @@ async def main():
                             print(f"[{now_str}]   ├─ Successfully processed Vietstock Article {url} for {symbol}")
                             if art.get("pdf_url"): 
                                 insert_pdf_count += 1
-                    await asyncio.sleep(0.3)
+                        else:
+                            duplicate_skip_count += 1
+                            print(f"  ⏭️ Duplicate content detected for {url}. Skipped.")
+                    await asyncio.sleep(REQUEST_DELAY_SECONDS)
+
+                await session.commit()
 
                 print(f"  ├─ Articles inserted: {insert_article_count}")
+                print(f"  ├─ Duplicates skipped: {duplicate_skip_count}")
                 print(f"  └─ PDFs detected: {insert_pdf_count}")
 
     await engine.dispose()

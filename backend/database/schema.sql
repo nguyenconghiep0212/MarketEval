@@ -1,24 +1,21 @@
 -- ==========================================
--- STEP 1: DROP ALL EXISTING TABLES
+-- STEP 1: NON-DESTRUCTIVE SCHEMA INIT
 -- ==========================================
-DROP TABLE IF EXISTS risk_assessments CASCADE;
-DROP TABLE IF EXISTS news_articles CASCADE;
-DROP TABLE IF EXISTS crawler_sources CASCADE;
-DROP TABLE IF EXISTS tickers CASCADE;
-DROP TABLE IF EXISTS article_attachments CASCADE;
-DROP TABLE IF EXISTS financial_analysis_articles CASCADE;
+-- Intentionally non-destructive: preserve existing data on repeated runs.
+-- For clean resets in local development, run explicit DROP statements manually.
 
 -- ==========================================
 -- STEP 2: ENABLE EXTENSIONS
 -- ==========================================
 CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- ==========================================
 -- STEP 3: CREATE TABLES & INDEXES
 -- ==========================================
 
 -- 1. Tickers Table
-CREATE TABLE tickers (
+CREATE TABLE IF NOT EXISTS tickers (
     id SERIAL PRIMARY KEY,
     symbol VARCHAR(10) UNIQUE NOT NULL,
     company_name VARCHAR(255),
@@ -28,7 +25,7 @@ CREATE TABLE tickers (
 );
 
 -- 2. Crawler Sources Table
-CREATE TABLE crawler_sources (
+CREATE TABLE IF NOT EXISTS crawler_sources (
     id SERIAL PRIMARY KEY,
     ticker_id INT REFERENCES tickers(id) ON DELETE CASCADE,
     publisher VARCHAR(50) NOT NULL,       -- e.g., 'CafeF', 'VnEconomy'
@@ -38,10 +35,10 @@ CREATE TABLE crawler_sources (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_crawler_sources_ticker ON crawler_sources(ticker_id);
+CREATE INDEX IF NOT EXISTS idx_crawler_sources_ticker ON crawler_sources(ticker_id);
 
 -- 3. News Articles Table
-CREATE TABLE news_articles (
+CREATE TABLE IF NOT EXISTS news_articles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     ticker_id INT REFERENCES tickers(id) ON DELETE CASCADE,
     source_url TEXT,
@@ -54,11 +51,10 @@ CREATE TABLE news_articles (
     content_hash VARCHAR(64) UNIQUE NOT NULL,             -- SHA-256 (headline + body)
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
-ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS pdf_url TEXT;
-CREATE INDEX idx_news_ticker_published ON news_articles(ticker_id, published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_news_ticker_published ON news_articles(ticker_id, published_at DESC);
 
 -- 4. Risk Assessments Table
-CREATE TABLE risk_assessments (
+CREATE TABLE IF NOT EXISTS risk_assessments (
     id SERIAL PRIMARY KEY,
     article_id UUID UNIQUE REFERENCES news_articles(id) ON DELETE CASCADE,
     embedding VECTOR(768),                               -- 768-dim PhoBERT output vector
@@ -71,12 +67,12 @@ CREATE TABLE risk_assessments (
 );
 
 -- 5. HNSW Vector Index for Fast K-NN Searches
-CREATE INDEX idx_risk_embedding ON risk_assessments 
+CREATE INDEX IF NOT EXISTS idx_risk_embedding ON risk_assessments 
 USING hnsw (embedding vector_cosine_ops);
 
 
 -- 6. Financial analysis articles table
-CREATE TABLE financial_analysis_articles (
+CREATE TABLE IF NOT EXISTS financial_analysis_articles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     ticker_id INT REFERENCES tickers(id) ON DELETE CASCADE,
     source_url TEXT,
@@ -89,7 +85,7 @@ CREATE TABLE financial_analysis_articles (
     content_hash VARCHAR(64) UNIQUE NOT NULL,             -- SHA-256 (headline + body)
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX idx_financial_analysis_ticker_published ON financial_analysis_articles(ticker_id, published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_financial_analysis_ticker_published ON financial_analysis_articles(ticker_id, published_at DESC);
 
 -- 7. Article Attachments Table
 CREATE TABLE IF NOT EXISTS article_attachments (

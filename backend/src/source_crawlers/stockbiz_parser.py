@@ -11,12 +11,12 @@ HEADERS = {
     "Referer": "https://stockbiz.vn"
 }
 
-def fetch_stockbiz_urls(pool_url: str) -> List[str]:
+async def fetch_stockbiz_urls(client: httpx.AsyncClient, pool_url: str) -> List[str]:
     """Step 1: Extract news URLs using the database-provided pool_url."""
     article_urls = []
     
     try:
-        res = httpx.get(pool_url, headers=HEADERS, timeout=10.0, follow_redirects=True)
+        res = await client.get(pool_url, headers=HEADERS)
         if res.status_code != 200:
             return []
             

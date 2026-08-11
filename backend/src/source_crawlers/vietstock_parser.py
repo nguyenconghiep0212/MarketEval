@@ -137,7 +137,7 @@ async def parse_vietstock_article(
             "publisher": "Vietstock",
             "headline": headline,
             "raw_content": body,
-            "published_at": published_at and published_date if published_at else published_date,
+            "published_at": published_at or published_date,
             "pdf_url": pdf_url,
             "content_hash": generate_content_hash(headline, body)
         }

@@ -32,7 +32,7 @@ class TickerMapper:
             symbol_map = {t["symbol"]: t["id"] for t in tickers}
             active_symbols = list(symbol_map.keys())
 
-            query = text("SELECT id, headline, cleaned_content FROM news_articles WHERE ticker_id IS NULL")
+            query = text("SELECT id, headline, raw_content FROM news_articles WHERE ticker_id IS NULL")
             result = await session.execute(query)
             unmapped = result.fetchall()
 
