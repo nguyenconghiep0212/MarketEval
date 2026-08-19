@@ -117,5 +117,12 @@ Re-open `pg_hba.conf`, change `trust` back to `scram-sha-256` or `md5`, save the
 
 ========================================================
 
-Remember to run .\backend\database\init_db.py
+## Init Database
 python -m backend.database.init_db.py
+python -m backend.database.seed_db.py
+
+## Run Backend
+uvicorn backend.main:app --reload --port 8000
+
+## Run Desktop app
+python -m desktop_app.py

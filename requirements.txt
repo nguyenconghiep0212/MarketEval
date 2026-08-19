@@ -33,7 +33,14 @@ transformers>=4.38.2
 sentence-transformers>=2.5.0
 scikit-learn>=1.4.1
 numpy>=1.26.4
+sentencepiece>=0.2
 
 # Task Scheduling & Alerts
 apscheduler>=3.10.4
 python-telegram-bot>=21.0.1
+
+# UI
+streamlit>=1.61.0
+psycopg2>=2.9.0
+sqlalchemy>=2.0.0
+pywebview>=6.2.0

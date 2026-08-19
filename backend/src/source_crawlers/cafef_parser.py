@@ -4,19 +4,29 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from typing import List, Optional, Dict, Any
 from backend.src.source_crawlers.utils import generate_content_hash, parse_datetime
+from backend.src.source_crawlers.utils.http_utils import fetch_with_retry, RetryConfig
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     "Referer": "https://cafef.vn/"
 }
 
+# ✅ Retry configuration for reliability
+RETRY_CONFIG = RetryConfig(max_retries=3, base_delay=2.0, max_delay=10.0)
+
+
 async def fetch_cafef_urls(client: httpx.AsyncClient, pool_url: str) -> List[str]:
-    """Step 1: Extract news URLs using the database-provided pool_url."""
+    """Step 1: Extract news URLs using the database-provided pool_url.
+    
+    ✅ Now uses fetch_with_retry for automatic retry on network failures
+    """
     article_urls = []
     
     try:
-        res = await client.get(pool_url, headers=HEADERS)
-        if res.status_code != 200:
+        # ✅ Use retry logic instead of direct client.get()
+        res = await fetch_with_retry(pool_url, client, HEADERS, RETRY_CONFIG)
+        if res is None or res.status_code != 200:
+            print(f"  ⚠️ Failed to fetch {pool_url} after retries")
             return []
             
         soup = BeautifulSoup(res.text, "lxml")
@@ -38,15 +48,19 @@ async def fetch_cafef_urls(client: httpx.AsyncClient, pool_url: str) -> List[str
 
 
 async def parse_cafef_article(client: httpx.AsyncClient, url: str) -> Optional[Dict[str, Any]]:
-    """Step 2: Parse headline, published date, and body text."""
+    """Step 2: Parse headline, published date, and body text.
+    
+    ✅ Now uses fetch_with_retry for automatic retry on network failures
+    """
     if url.lower().endswith(".pdf") or ".doc" in url.lower() or "download" in url.lower():
         print(f"  ⏭️ Skipped (Document Link): {url}")
         return None
 
     try:
-        res = await client.get(url, headers=HEADERS)
-        if res.status_code != 200:
-            print(f"  ⚠️ HTTP {res.status_code} for: {url}")
+        # ✅ Use retry logic instead of direct client.get()
+        res = await fetch_with_retry(url, client, HEADERS, RETRY_CONFIG)
+        if res is None or res.status_code != 200:
+            print(f"  ⚠️ Failed to fetch {url} after retries")
             return None
 
         soup = BeautifulSoup(res.text, "lxml")
