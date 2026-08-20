@@ -3,13 +3,9 @@ import requests
 import pandas as pd
 import streamlit as st
 
-# Configure Streamlit page settings
-st.set_page_config(
-    page_title="MarketEval Intelligence Dashboard",
-    page_icon="📈",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# NOTE: st.set_page_config is intentionally NOT called here.
+# It's called once in main.py (the st.navigation entry point) —
+# calling it again in this page would raise a StreamlitAPIException.
 
 # API Endpoint Configuration
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000/api")
@@ -42,27 +38,33 @@ def fetch_tickers() -> list:
 
 
 @st.cache_data(ttl=15)
-def fetch_news(ticker: str = "ALL", limit: int = 50) -> list:
-    """Fetch scraped news articles and sentiment scores from FastAPI."""
+def fetch_news(tickers: list, limit: int = 50) -> list:
+    """
+    Fetch news articles (with sentiment scores) for one or more tickers via
+    the POST /news/by-tickers endpoint. `limit` is applied PER ticker on the
+    backend, so requesting several tickers returns up to `limit` articles for
+    EACH of them, not `limit` total.
+    """
+    if not tickers:
+        return []
     try:
-        if ticker != "ALL":
-            tickers = [ticker]
-        else:
-            # "tickers" requires at least one symbol, so expand ALL to every active ticker
-            tickers = [t["symbol"] for t in fetch_tickers() if "symbol" in t]
-            if not tickers:
-                return []
-
-        res = requests.post(
-            f"{API_BASE_URL}/news/article-by-tickers",
-            json={"tickers": tickers, "limit": limit},
-            timeout=5,
-        )
+        payload = {"tickers": tickers, "limit": limit}
+        res = requests.post(f"{API_BASE_URL}/news/article-by-tickers", json=payload, timeout=10)
         if res.status_code == 200:
             return res.json().get("articles", [])
+        else:
+            st.error(f"Failed to fetch news feed: HTTP {res.status_code} — {res.text}")
     except requests.exceptions.RequestException as e:
         st.error(f"Failed to fetch news feed: {e}")
     return []
+
+
+def resolve_selected_tickers(selected: str, all_options: list) -> list:
+    """Turns a single selectbox choice ('ALL' or one symbol) into the ticker
+    array the by-tickers endpoint expects."""
+    if selected == "ALL":
+        return [s for s in all_options if s != "ALL"]
+    return [selected]
 
 
 @st.cache_data(ttl=15)
@@ -102,15 +104,15 @@ def ticker_options_list(tickers_data: list) -> list:
 
 
 # -------------------------------------------------------------------
-# MAIN CONTENT — normal page flow, full width minus the reserved
-# right padding above. Not nested inside the status panel.
+# MAIN CONTENT — the sidebar (title, nav, API status, refresh, footer)
+# now lives centrally in main.py, rendered on every page. This page
+# only needs to know whether the API is online to gate its own content.
 # -------------------------------------------------------------------
 
 st.title("📈 MarketEval Intelligence & Risk Dashboard")
 st.markdown("Real-time NLP sentiment evaluation, news aggregation, and multi-horizon trading risk signals.")
 
 api_online = check_api_health()
-
 if not api_online:
     st.warning("⚠️ Cannot fetch real-time intelligence. The backend API server is unresponsive.")
     st.stop()
@@ -141,25 +143,34 @@ with tab_feed:
             st.rerun()
 
     with content_col:
-        articles = fetch_news(ticker=feed_ticker, limit=feed_limit)
+        selected_tickers = resolve_selected_tickers(feed_ticker, ticker_options)
+        articles = fetch_news(tickers=selected_tickers, limit=feed_limit)
         df_articles = pd.DataFrame(articles)
 
+        # KPI metrics are calculated directly from the articles currently
+        # listed below (i.e. exactly what's on screen for this ticker/limit
+        # selection) — not a separate aggregate query.
         total_articles = len(articles)
         if not df_articles.empty and "sentiment_score" in df_articles.columns:
             valid_scores = df_articles["sentiment_score"].dropna()
             avg_sentiment = valid_scores.mean() if not valid_scores.empty else 0.0
             bullish_count = (valid_scores >= 0.20).sum()
             bearish_count = (valid_scores <= -0.20).sum()
+            unscored_count = df_articles["sentiment_score"].isna().sum()
         else:
             avg_sentiment = 0.0
             bullish_count = 0
             bearish_count = 0
+            unscored_count = total_articles
 
         k1, k2, k3, k4 = st.columns(4)
         k1.metric("Total Ingested Articles", total_articles)
         k2.metric("Average Sentiment Score", f"{avg_sentiment:+.3f}", delta=get_sentiment_badge(avg_sentiment))
         k3.metric("Bullish Signals", int(bullish_count))
         k4.metric("Bearish Signals", int(bearish_count))
+
+        if unscored_count:
+            st.caption(f"ℹ️ {unscored_count} article(s) haven't been scored by the intelligence pipeline yet and are excluded from the average.")
 
         st.markdown("---")
         st.subheader(f"Latest News Articles ({feed_ticker})")
@@ -252,7 +263,8 @@ with tab_analytics:
             st.rerun()
 
     with content_col:
-        analytics_articles = fetch_news(ticker=analytics_ticker, limit=analytics_limit)
+        analytics_selected_tickers = resolve_selected_tickers(analytics_ticker, ticker_options)
+        analytics_articles = fetch_news(tickers=analytics_selected_tickers, limit=analytics_limit)
         df_analytics = pd.DataFrame(analytics_articles)
 
         st.subheader("Sentiment Score Distribution")
