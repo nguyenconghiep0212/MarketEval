@@ -19,7 +19,6 @@ class TickerNewsRequest(BaseModel):
     limit: int = Field(
         10,
         ge=1,
-        le=100,
         description="Max number of items (news + financial reports combined) to return PER ticker",
     )
 

@@ -94,17 +94,18 @@ async def save_articles(
             "published_at": article.get("published_at"),
         },
     )
-    
+
     # 2. Safely check if the database returned any rows before fetching
-    if result.returns_rows: # type: ignore
+    if result.returns_rows:  # type: ignore
         row = result.fetchone()
         if row:
             inserted_id = row[0]
             # print(f"Inserted ID: {inserted_id}")
             return inserted_id
-            
+
     # 3. If no rows were returned, ON CONFLICT DO NOTHING caught a duplicate
     return None
+
 
 async def save_financial_report(
     session: AsyncSession, ticker_id: int, financial_report: Dict[str, Any]
@@ -134,30 +135,38 @@ async def save_financial_report(
             "published_at": financial_report.get("published_at"),
         },
     )
-    
+
     # 2. Safely check if the database returned any rows before fetching
-    if result.returns_rows: # type: ignore
+    if result.returns_rows:  # type: ignore
         row = result.fetchone()
         if row:
             inserted_id = row[0]
             # print(f"Inserted ID: {inserted_id}")
             return inserted_id
-            
+
     # 3. If no rows were returned, ON CONFLICT DO NOTHING caught a duplicate
     return None
 
 
 async def is_article_hash_exists(session: AsyncSession, content_hash: str) -> bool:
     """Checks if an article with the exact normalized content hash already exists."""
-    query = text("SELECT 1 FROM news_articles WHERE content_hash = :content_hash LIMIT 1;")
+    query = text(
+        "SELECT 1 FROM news_articles WHERE content_hash = :content_hash LIMIT 1;"
+    )
     result = await session.execute(query, {"content_hash": content_hash})
     return result.scalar() is not None
 
-async def is_financial_report_hash_exists(session: AsyncSession, content_hash: str) -> bool:
+
+async def is_financial_report_hash_exists(
+    session: AsyncSession, content_hash: str
+) -> bool:
     """Checks if an article with the exact normalized content hash already exists."""
-    query = text("SELECT 1 FROM financial_analysis_articles WHERE content_hash = :content_hash LIMIT 1;")
+    query = text(
+        "SELECT 1 FROM financial_analysis_articles WHERE content_hash = :content_hash LIMIT 1;"
+    )
     result = await session.execute(query, {"content_hash": content_hash})
     return result.scalar() is not None
+
 
 async def get_unindexed_news_articles(
     session: AsyncSession, limit: int = 10
@@ -205,9 +214,8 @@ async def get_articles_by_tickers(
         return []
 
     query = text("""
-        WITH combined AS (
+        WITH ranked AS (
             SELECT
-                'news' AS source_type,
                 na.id,
                 na.ticker_id,
                 t.symbol AS ticker_symbol,
@@ -217,40 +225,17 @@ async def get_articles_by_tickers(
                 na.headline,
                 na.raw_content,
                 na.pdf_url,
-                na.created_at
+                na.created_at,
+                ROW_NUMBER() OVER (
+                    PARTITION BY t.symbol
+                    ORDER BY na.published_at DESC NULLS LAST, na.created_at DESC
+                ) AS rn
             FROM news_articles na
             JOIN tickers t ON na.ticker_id = t.id
             WHERE t.symbol IN :symbols
-
-            UNION ALL
-
-            SELECT
-                'financial_report' AS source_type,
-                fa.id,
-                fa.ticker_id,
-                t.symbol AS ticker_symbol,
-                fa.source_url,
-                fa.publisher,
-                fa.published_at,
-                fa.headline,
-                fa.raw_content,
-                fa.pdf_url,
-                fa.created_at
-            FROM financial_analysis_articles fa
-            JOIN tickers t ON fa.ticker_id = t.id
-            WHERE t.symbol IN :symbols
-        ),
-        ranked AS (
-            SELECT
-                combined.*,
-                ROW_NUMBER() OVER (
-                    PARTITION BY ticker_symbol
-                    ORDER BY published_at DESC NULLS LAST, created_at DESC
-                ) AS rn
-            FROM combined
         )
         SELECT
-            source_type, id, ticker_id, ticker_symbol, source_url, publisher,
+            id, ticker_id, ticker_symbol, source_url, publisher,
             published_at, headline, raw_content, pdf_url, created_at
         FROM ranked
         WHERE rn <= :limit_per_ticker

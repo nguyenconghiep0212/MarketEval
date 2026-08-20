@@ -45,11 +45,19 @@ def fetch_tickers() -> list:
 def fetch_news(ticker: str = "ALL", limit: int = 50) -> list:
     """Fetch scraped news articles and sentiment scores from FastAPI."""
     try:
-        params = {"limit": limit}
         if ticker != "ALL":
-            params["ticker"] = ticker
+            tickers = [ticker]
+        else:
+            # "tickers" requires at least one symbol, so expand ALL to every active ticker
+            tickers = [t["symbol"] for t in fetch_tickers() if "symbol" in t]
+            if not tickers:
+                return []
 
-        res = requests.post(f"{API_BASE_URL}/news/article-by-tickers", json={"tickers": [ticker] if ticker != "ALL" else [], "limit": limit}, timeout=5)
+        res = requests.post(
+            f"{API_BASE_URL}/news/article-by-tickers",
+            json={"tickers": tickers, "limit": limit},
+            timeout=5,
+        )
         if res.status_code == 200:
             return res.json().get("articles", [])
     except requests.exceptions.RequestException as e:
@@ -90,7 +98,7 @@ def get_sentiment_badge(score: float) -> str:
 
 
 def ticker_options_list(tickers_data: list) -> list:
-    return ["ALL"] + [t["symbol"] for t in tickers_data if "symbol" in t]
+    return [t["symbol"] for t in tickers_data if "symbol" in t]
 
 
 # -------------------------------------------------------------------
