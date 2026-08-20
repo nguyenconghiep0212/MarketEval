@@ -1,15 +1,21 @@
 import os
 import requests
-import pandas as pd
 import streamlit as st
 
-# API Endpoint Configuration
+# st.set_page_config must be called exactly once, here in the entry point,
+# BEFORE st.navigation(). Do NOT call it again in the individual page files
+# (pages/2_Dashboard.py, pages/1_Ticker_Management.py) or Streamlit will
+# raise a "can only be called once" error.
+st.set_page_config(
+    page_title="MarketEval Intelligence Dashboard",
+    page_icon="📈",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000/api")
 HEALTH_CHECK_URL = API_BASE_URL.replace("/api", "")
 
-# -------------------------------------------------------------------
-# API HELPER FUNCTIONS (WITH CACHING)
-# -------------------------------------------------------------------
 
 @st.cache_data(ttl=10)
 def check_api_health() -> bool:
@@ -20,22 +26,6 @@ def check_api_health() -> bool:
     except requests.exceptions.RequestException:
         return False
 
-st.sidebar.title("📊 MarketEval")
-
-api_online = check_api_health()
-if api_online:
-    st.sidebar.success("🟢 API Server: Online")
-else:
-    st.sidebar.error("🔴 API Server: Offline")
-    st.sidebar.info(
-        f"Connecting to: `{API_BASE_URL}`\n"
-        "Please ensure FastAPI is running via `uvicorn backend.main:app --reload --reload-dir backend --port 8000`"
-    )
-
-
-if st.sidebar.button("🔄 Refresh All Data"):
-    st.cache_data.clear()
-    st.rerun()
 
 # Explicitly declare the pages that should appear in the nav.
 # main.py is intentionally NOT in this list, so it never shows up as a tab —
@@ -43,11 +33,44 @@ if st.sidebar.button("🔄 Refresh All Data"):
 pages = [
     st.Page("pages/1_Dashboard.py", title="Dashboard", icon="📈", default=True),
     st.Page("pages/2_Ticker_Management.py", title="Ticker Management", icon="⚙️"),
+    st.Page("pages/3_News_Crawler.py", title="News Crawler", icon="🕸️"),
 ]
 
-pg = st.navigation(pages)
-pg.run()
+# position="hidden" stops Streamlit from auto-injecting its own nav widget
+# at the very top of the sidebar. We build the sidebar ourselves below, in
+# whatever order we want — st.page_link() renders a link to each Page.
+pg = st.navigation(pages, position="hidden")
 
-st.sidebar.markdown("---")
-st.sidebar.caption("MarketEval v1.0")
-st.sidebar.caption("Vietnamese Financial Intelligence Engine.")
+with st.sidebar:
+    # 1. TITLE — to the front (top of the sidebar)
+    st.title("📊 MarketEval")
+    
+    st.markdown("")
+
+    # 2. NAV — in the middle
+    for page in pages:
+        st.page_link(page)
+
+    st.markdown("---")
+
+    # 3. STATUS / ACTIONS / FOOTER — after the nav, shown on every page
+    #    since this block lives in main.py, not inside a specific page.
+    api_online = check_api_health()
+    if api_online:
+        st.success("API Server: Online")
+    else:
+        st.error("API Server: Offline")
+        st.caption(
+            f"Connecting to: `{API_BASE_URL}`\n\n"
+            "Ensure FastAPI is running via `uvicorn backend.main:app --reload`"
+        )
+
+    if st.button("🔄 Refresh All Data", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
+
+    st.markdown("---")
+    st.caption("MarketEval v1.0")
+    st.caption("Vietnamese Financial Intelligence Engine")
+
+pg.run()
