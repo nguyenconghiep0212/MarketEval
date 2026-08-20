@@ -9,7 +9,9 @@ from backend.database.queries.tickers import (
     get_all_tickers,
     add_ticker,
     toggle_ticker_status,
-    delete_ticker
+    delete_ticker,
+    seed_missing_sources_for_all_tickers,
+    DEFAULT_SOURCE_PUBLISHERS,
 )
 
 router = APIRouter()
@@ -26,7 +28,8 @@ class TickerToggle(BaseModel):
 # --- API Endpoints ---
 @router.get("/all", response_model=Dict[str, List[Dict[str, Any]]])
 async def read_all_tickers(session: AsyncSession = Depends(get_db)):
-    """Fetch all tickers (active and inactive) for the management UI."""
+    """Fetch all tickers (active and inactive) for the management UI, including
+    how many of the 4 standard crawler sources each one has seeded."""
     try:
         tickers = await get_all_tickers(session)
         return {"tickers": tickers}
@@ -35,11 +38,28 @@ async def read_all_tickers(session: AsyncSession = Depends(get_db)):
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_ticker(ticker: TickerCreate, session: AsyncSession = Depends(get_db)):
-    """Add a new ticker to the watchlist."""
-    success = await add_ticker(session, ticker.symbol, ticker.company_name, ticker.sector)
-    if not success:
+    """Add a new ticker to the watchlist and auto-seed its 4 default crawler sources."""
+    ticker_id = await add_ticker(session, ticker.symbol, ticker.company_name, ticker.sector)
+    if ticker_id is None:
         raise HTTPException(status_code=400, detail=f"Ticker {ticker.symbol} already exists.")
-    return {"message": f"Successfully added {ticker.symbol}."}
+    return {
+        "message": f"Successfully added {ticker.symbol} and seeded its crawler sources.",
+        "ticker_id": ticker_id,
+        "sources_seeded": DEFAULT_SOURCE_PUBLISHERS,
+    }
+
+@router.post("/seed-sources")
+async def seed_sources_for_existing_tickers(session: AsyncSession = Depends(get_db)):
+    """
+    Backfills crawler sources for any ticker missing one or more of the 4
+    standard publishers — covers tickers added before source auto-seeding
+    existed, or ones only partially seeded.
+    """
+    try:
+        summary = await seed_missing_sources_for_all_tickers(session)
+        return summary
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/{ticker_id}/toggle")
 async def update_ticker_status(
