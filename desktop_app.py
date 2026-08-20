@@ -15,7 +15,7 @@ def is_port_open(port: int, host: str = "127.0.0.1") -> bool:
 
 def main():
     streamlit_port = 8501
-    dashboard_path = os.path.join("ui", "dashboard.py")
+    ui_path = os.path.join("ui", "main.py")
 
     # 1. Check if Streamlit server is already running
     if not is_port_open(streamlit_port):
@@ -26,7 +26,7 @@ def main():
                 "-m",
                 "streamlit",
                 "run",
-                dashboard_path,
+                ui_path,
                 f"--server.port={streamlit_port}",
                 "--server.headless=true",
                 "--global.developmentMode=false",
