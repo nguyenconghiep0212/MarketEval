@@ -187,3 +187,80 @@ async def get_unindexed_financial_articles(
     """)
     result = await session.execute(query, {"limit": limit})
     return [dict(row) for row in result.mappings().all()]
+
+
+async def get_articles_by_tickers(
+    session: AsyncSession, symbols: List[str], limit_per_ticker: int = 10
+) -> List[Dict[str, Any]]:
+    """
+    Fetches news articles AND financial reports for the given ticker symbols,
+    combined into a single feed per ticker, ranked by published_at (most recent
+    first), and capped at `limit_per_ticker` items PER ticker (not globally).
+
+    Uses ROW_NUMBER() OVER (PARTITION BY ticker_symbol ...) so each ticker in
+    `symbols` gets its own independent top-N window, regardless of how many
+    tickers are requested or how unevenly articles are distributed among them.
+    """
+    if not symbols:
+        return []
+
+    query = text("""
+        WITH combined AS (
+            SELECT
+                'news' AS source_type,
+                na.id,
+                na.ticker_id,
+                t.symbol AS ticker_symbol,
+                na.source_url,
+                na.publisher,
+                na.published_at,
+                na.headline,
+                na.raw_content,
+                na.pdf_url,
+                na.created_at
+            FROM news_articles na
+            JOIN tickers t ON na.ticker_id = t.id
+            WHERE t.symbol IN :symbols
+
+            UNION ALL
+
+            SELECT
+                'financial_report' AS source_type,
+                fa.id,
+                fa.ticker_id,
+                t.symbol AS ticker_symbol,
+                fa.source_url,
+                fa.publisher,
+                fa.published_at,
+                fa.headline,
+                fa.raw_content,
+                fa.pdf_url,
+                fa.created_at
+            FROM financial_analysis_articles fa
+            JOIN tickers t ON fa.ticker_id = t.id
+            WHERE t.symbol IN :symbols
+        ),
+        ranked AS (
+            SELECT
+                combined.*,
+                ROW_NUMBER() OVER (
+                    PARTITION BY ticker_symbol
+                    ORDER BY published_at DESC NULLS LAST, created_at DESC
+                ) AS rn
+            FROM combined
+        )
+        SELECT
+            source_type, id, ticker_id, ticker_symbol, source_url, publisher,
+            published_at, headline, raw_content, pdf_url, created_at
+        FROM ranked
+        WHERE rn <= :limit_per_ticker
+        ORDER BY ticker_symbol ASC, published_at DESC NULLS LAST;
+    """).bindparams(bindparam("symbols", expanding=True))
+
+    symbols_upper = [s.upper() for s in symbols]
+    result = await session.execute(
+        query,
+        {"symbols": symbols_upper, "limit_per_ticker": limit_per_ticker},
+    )
+    rows = result.mappings().all()
+    return [dict(row) for row in rows]

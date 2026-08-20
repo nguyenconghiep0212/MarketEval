@@ -17,6 +17,8 @@ Set up APScheduler loops inside FastAPI to keep data fetching running automatica
 Integrate PhoBERT or ViFiNBERT model loaders using PyTorch and Hugging Face.
 Implement text vectorization to store 768-dimensional embeddings into PostgreSQL pgvector columns.
 Develop the sentiment analysis classifier to produce bounded scores (-1.0 to +1.0).
+    -1.000: Strongly Bearish (negative market impact/pessimistic outlook).
+    +1.000: Strongly Bullish (positive market impact/optimistic outlook).
                            ┌────────────────────────┐
                            │ Raw Articles & PDFs    │
                            └───────────┬────────────┘

@@ -49,7 +49,7 @@ def fetch_news(ticker: str = "ALL", limit: int = 50) -> list:
         if ticker != "ALL":
             params["ticker"] = ticker
 
-        res = requests.get(f"{API_BASE_URL}/news", params=params, timeout=5)
+        res = requests.post(f"{API_BASE_URL}/news/article-by-tickers", json={"tickers": [ticker] if ticker != "ALL" else [], "limit": limit}, timeout=5)
         if res.status_code == 200:
             return res.json().get("articles", [])
     except requests.exceptions.RequestException as e:
