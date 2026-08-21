@@ -49,7 +49,7 @@ def fetch_news(tickers: list, limit: int = 50) -> list:
         return []
     try:
         payload = {"tickers": tickers, "limit": limit}
-        res = requests.post(f"{API_BASE_URL}/news/article-by-tickers", json=payload, timeout=10)
+        res = requests.post(f"{API_BASE_URL}/news/by-tickers", json=payload, timeout=10)
         if res.status_code == 200:
             return res.json().get("articles", [])
         else:
@@ -99,8 +99,24 @@ def get_sentiment_badge(score: float) -> str:
         return f"🟡 Neutral ({score:+.2f})"
 
 
+def analyze_sentiment(article_ids: list, only_unscored: bool) -> dict:
+    """Calls the sentiment-analysis endpoint for the given article ids."""
+    if not article_ids:
+        return {}
+    try:
+        payload = {"article_ids": article_ids, "only_unscored": only_unscored}
+        res = requests.post(f"{API_BASE_URL}/news/analyze-sentiment", json=payload, timeout=300)
+        if res.status_code == 200:
+            return res.json()
+        else:
+            st.error(f"Sentiment analysis failed: HTTP {res.status_code} — {res.text}")
+    except requests.exceptions.RequestException as e:
+        st.error(f"Sentiment analysis failed: {e}")
+    return {}
+
+
 def ticker_options_list(tickers_data: list) -> list:
-    return [t["symbol"] for t in tickers_data if "symbol" in t]
+    return ["ALL"] + [t["symbol"] for t in tickers_data if "symbol" in t]
 
 
 # -------------------------------------------------------------------
@@ -130,6 +146,9 @@ tab_feed, tab_risk, tab_analytics = st.tabs(
 with tab_feed:
     side_col, content_col = st.columns([1, 4], gap="large")
 
+    # Filters are created first so we know what to fetch below, then the
+    # fetch happens once and is shared by both the side panel (which needs
+    # article ids for the analysis buttons) and the content column.
     with side_col:
         st.markdown("#### Filters")
         feed_ticker = st.selectbox(
@@ -142,11 +161,74 @@ with tab_feed:
             fetch_news.clear()
             st.rerun()
 
-    with content_col:
-        selected_tickers = resolve_selected_tickers(feed_ticker, ticker_options)
-        articles = fetch_news(tickers=selected_tickers, limit=feed_limit)
-        df_articles = pd.DataFrame(articles)
+    selected_tickers = resolve_selected_tickers(feed_ticker, ticker_options)
+    articles = fetch_news(tickers=selected_tickers, limit=feed_limit)
+    df_articles = pd.DataFrame(articles)
 
+    # Defensive coercion: sentiment_score should already be a float from the
+    # backend, but if it ever arrives as a string (e.g. a Decimal→JSON
+    # serialization quirk), pandas .mean() on an object column silently
+    # falls back to string concatenation instead of raising something
+    # obvious — pd.to_numeric with errors="coerce" guarantees a real numeric
+    # dtype here (turning anything unparseable into NaN) so the KPI math
+    # below can never crash on this again.
+    if not df_articles.empty and "sentiment_score" in df_articles.columns:
+        df_articles["sentiment_score"] = pd.to_numeric(
+            df_articles["sentiment_score"], errors="coerce"
+        )
+
+    article_ids = (
+        df_articles["id"].tolist()
+        if not df_articles.empty and "id" in df_articles.columns
+        else []
+    )
+    unscored_ids = (
+        df_articles.loc[df_articles["sentiment_score"].isna(), "id"].tolist()
+        if not df_articles.empty and "sentiment_score" in df_articles.columns and "id" in df_articles.columns
+        else []
+    )
+
+    with side_col:
+        st.markdown("---")
+        st.markdown("#### Sentiment Analysis")
+        st.caption(f"{len(unscored_ids)} of {len(article_ids)} listed article(s) unscored")
+
+        analyze_unscored_clicked = st.button(
+            "🔍 Analyze Unscored",
+            key="analyze_unscored_btn",
+            use_container_width=True,
+            disabled=(len(unscored_ids) == 0),
+        )
+        reanalyze_all_clicked = st.button(
+            "🔄 Re-analyze All Listed",
+            key="reanalyze_all_btn",
+            use_container_width=True,
+            disabled=(len(article_ids) == 0),
+        )
+
+        if analyze_unscored_clicked:
+            with st.spinner(f"Analyzing {len(unscored_ids)} unscored article(s) — the model may take a moment to load on first run…"):
+                summary = analyze_sentiment(unscored_ids, only_unscored=True)
+            if summary:
+                st.success(
+                    f"Analyzed {summary.get('analyzed', 0)} article(s). "
+                    f"{summary.get('skipped_empty_content', 0)} skipped (no content)."
+                )
+                fetch_news.clear()
+                st.rerun()
+
+        if reanalyze_all_clicked:
+            with st.spinner(f"Re-analyzing {len(article_ids)} article(s) — this overwrites existing scores…"):
+                summary = analyze_sentiment(article_ids, only_unscored=False)
+            if summary:
+                st.success(
+                    f"Re-analyzed {summary.get('analyzed', 0)} article(s). "
+                    f"{summary.get('skipped_empty_content', 0)} skipped (no content)."
+                )
+                fetch_news.clear()
+                st.rerun()
+
+    with content_col:
         # KPI metrics are calculated directly from the articles currently
         # listed below (i.e. exactly what's on screen for this ticker/limit
         # selection) — not a separate aggregate query.
@@ -266,6 +348,11 @@ with tab_analytics:
         analytics_selected_tickers = resolve_selected_tickers(analytics_ticker, ticker_options)
         analytics_articles = fetch_news(tickers=analytics_selected_tickers, limit=analytics_limit)
         df_analytics = pd.DataFrame(analytics_articles)
+
+        if not df_analytics.empty and "sentiment_score" in df_analytics.columns:
+            df_analytics["sentiment_score"] = pd.to_numeric(
+                df_analytics["sentiment_score"], errors="coerce"
+            )
 
         st.subheader("Sentiment Score Distribution")
 

@@ -94,18 +94,17 @@ async def save_articles(
             "published_at": article.get("published_at"),
         },
     )
-
+    
     # 2. Safely check if the database returned any rows before fetching
-    if result.returns_rows:  # type: ignore
+    if result.returns_rows: # type: ignore
         row = result.fetchone()
         if row:
             inserted_id = row[0]
             # print(f"Inserted ID: {inserted_id}")
             return inserted_id
-
+            
     # 3. If no rows were returned, ON CONFLICT DO NOTHING caught a duplicate
     return None
-
 
 async def save_financial_report(
     session: AsyncSession, ticker_id: int, financial_report: Dict[str, Any]
@@ -135,38 +134,30 @@ async def save_financial_report(
             "published_at": financial_report.get("published_at"),
         },
     )
-
+    
     # 2. Safely check if the database returned any rows before fetching
-    if result.returns_rows:  # type: ignore
+    if result.returns_rows: # type: ignore
         row = result.fetchone()
         if row:
             inserted_id = row[0]
             # print(f"Inserted ID: {inserted_id}")
             return inserted_id
-
+            
     # 3. If no rows were returned, ON CONFLICT DO NOTHING caught a duplicate
     return None
 
 
 async def is_article_hash_exists(session: AsyncSession, content_hash: str) -> bool:
     """Checks if an article with the exact normalized content hash already exists."""
-    query = text(
-        "SELECT 1 FROM news_articles WHERE content_hash = :content_hash LIMIT 1;"
-    )
+    query = text("SELECT 1 FROM news_articles WHERE content_hash = :content_hash LIMIT 1;")
     result = await session.execute(query, {"content_hash": content_hash})
     return result.scalar() is not None
 
-
-async def is_financial_report_hash_exists(
-    session: AsyncSession, content_hash: str
-) -> bool:
+async def is_financial_report_hash_exists(session: AsyncSession, content_hash: str) -> bool:
     """Checks if an article with the exact normalized content hash already exists."""
-    query = text(
-        "SELECT 1 FROM financial_analysis_articles WHERE content_hash = :content_hash LIMIT 1;"
-    )
+    query = text("SELECT 1 FROM financial_analysis_articles WHERE content_hash = :content_hash LIMIT 1;")
     result = await session.execute(query, {"content_hash": content_hash})
     return result.scalar() is not None
-
 
 async def get_unindexed_news_articles(
     session: AsyncSession, limit: int = 10
@@ -198,13 +189,19 @@ async def get_unindexed_financial_articles(
     return [dict(row) for row in result.mappings().all()]
 
 
-async def get_articles_by_tickers(
+async def get_news_articles_by_tickers(
     session: AsyncSession, symbols: List[str], limit_per_ticker: int = 10
 ) -> List[Dict[str, Any]]:
     """
-    Fetches news articles AND financial reports for the given ticker symbols,
-    combined into a single feed per ticker, ranked by published_at (most recent
-    first), and capped at `limit_per_ticker` items PER ticker (not globally).
+    Fetches news articles (news_articles only — financial reports are excluded
+    since their raw_content is just report-page boilerplate, not the actual
+    PDF content) for the given ticker symbols, ranked by published_at (most
+    recent first), and capped at `limit_per_ticker` items PER ticker.
+
+    Each row is LEFT JOINed against risk_assessments so the caller gets the
+    already-computed sentiment_score (and horizon signals) alongside the
+    article — sentiment_score will be NULL for articles the intelligence
+    pipeline hasn't processed yet.
 
     Uses ROW_NUMBER() OVER (PARTITION BY ticker_symbol ...) so each ticker in
     `symbols` gets its own independent top-N window, regardless of how many
@@ -226,17 +223,25 @@ async def get_articles_by_tickers(
                 na.raw_content,
                 na.pdf_url,
                 na.created_at,
+                ra.sentiment_score,
+                ra.confidence_score,
+                ra.horizon_short,
+                ra.horizon_medium,
+                ra.horizon_long,
                 ROW_NUMBER() OVER (
                     PARTITION BY t.symbol
                     ORDER BY na.published_at DESC NULLS LAST, na.created_at DESC
                 ) AS rn
             FROM news_articles na
             JOIN tickers t ON na.ticker_id = t.id
+            LEFT JOIN risk_assessments ra ON ra.news_article_id = na.id
             WHERE t.symbol IN :symbols
         )
         SELECT
             id, ticker_id, ticker_symbol, source_url, publisher,
-            published_at, headline, raw_content, pdf_url, created_at
+            published_at, headline, raw_content, pdf_url, created_at,
+            sentiment_score, confidence_score,
+            horizon_short, horizon_medium, horizon_long
         FROM ranked
         WHERE rn <= :limit_per_ticker
         ORDER BY ticker_symbol ASC, published_at DESC NULLS LAST;
@@ -247,5 +252,49 @@ async def get_articles_by_tickers(
         query,
         {"symbols": symbols_upper, "limit_per_ticker": limit_per_ticker},
     )
-    rows = result.mappings().all()
-    return [dict(row) for row in rows]
+    rows = [dict(row) for row in result.mappings().all()]
+
+    # PostgreSQL NUMERIC columns come back as Decimal. Cast explicitly to
+    # native float here so downstream JSON/pandas consumers reliably get
+    # real numbers, regardless of how Decimal happens to serialize through
+    # the API layer (it can silently end up as a string in some paths,
+    # which breaks pandas .mean() with a cryptic concatenation error).
+    for row in rows:
+        if row.get("sentiment_score") is not None:
+            row["sentiment_score"] = float(row["sentiment_score"])
+        if row.get("confidence_score") is not None:
+            row["confidence_score"] = float(row["confidence_score"])
+
+    return rows
+
+
+async def get_articles_for_sentiment_analysis(
+    session: AsyncSession, article_ids: List[str], only_unscored: bool = True
+) -> List[Dict[str, Any]]:
+    """
+    Fetches raw_content (+ any existing sentiment_score) for the given
+    news_article ids, for the sentiment analysis endpoint.
+
+    If only_unscored=True, articles that already have a sentiment_score are
+    excluded from the returned list entirely (used by the "Analyze
+    Unscored" button). If False, every matching article is returned
+    regardless of existing score (used by "Re-analyze Selected", which
+    overwrites whatever score is already there).
+    """
+    if not article_ids:
+        return []
+
+    query = text("""
+        SELECT na.id, na.raw_content, ra.sentiment_score
+        FROM news_articles na
+        LEFT JOIN risk_assessments ra ON ra.news_article_id = na.id
+        WHERE na.id IN :article_ids
+    """).bindparams(bindparam("article_ids", expanding=True))
+
+    result = await session.execute(query, {"article_ids": article_ids})
+    rows = [dict(row) for row in result.mappings().all()]
+
+    if only_unscored:
+        rows = [r for r in rows if r["sentiment_score"] is None]
+
+    return rows

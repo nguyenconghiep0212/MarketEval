@@ -122,7 +122,8 @@ python -m backend.database.init_db.py
 python -m backend.database.seed_db.py
 
 ## Run Backend
-uvicorn backend.main:app --reload --reload-dir backend --port 8000
+<!-- uvicorn backend.main:app --reload --reload-dir backend --reload-exclude .venv --port 8000 -->
+uvicorn backend.main:app --reload --port 8000 
 
 ## Run Desktop app
 python -m desktop_app

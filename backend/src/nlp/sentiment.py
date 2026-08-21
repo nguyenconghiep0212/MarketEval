@@ -4,6 +4,7 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import torch.nn.functional as F
 from typing import List
 
+# MODEL_NAME = "5CD-AI/Vietnamese-Sentiment-visobert"
 MODEL_NAME = "uitnlp/visobert"  # State-of-the-art Vietnamese social/text encoder
 # MODEL_NAME = "vinai/phobert-base-v2" # Can swap with fine-tuned ViFiNBERT
 
@@ -12,10 +13,12 @@ class SentimentEngine:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print(f"  📊 Loading Sentiment Model '{model_name}' on device: {self.device}")
         
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForSequenceClassification.from_pretrained(
-            model_name, num_labels=3 # [Negative, Neutral, Positive]
-        ).to(self.device)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
+        self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
+        # self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        # self.model = AutoModelForSequenceClassification.from_pretrained(
+        #     model_name, num_labels=3 # [Negative, Neutral, Positive]
+        # ).to(self.device)
         self.model.eval()
 
     def analyze_text(self, text: str) -> float:
