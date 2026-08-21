@@ -1,6 +1,8 @@
 import asyncio
-from datetime import datetime
+import sys
 import traceback
+from datetime import datetime
+from functools import partial
 from typing import AsyncGenerator, Dict, List, Any, Optional
 
 import httpx
@@ -16,15 +18,53 @@ from backend.src.source_crawlers.stockbiz_financial_report_parser import (
     parse_stockbiz_financial_report_article,
 )
 
-import asyncio
-import sys
-from typing import Optional
-
 REQUEST_DELAY_SECONDS = 0.1
 
 
-if sys.platform == "win32":
-    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+def _run_coro_in_isolated_windows_loop(coro_fn, *args, **kwargs):
+    """
+    Runs an async function to completion in a BRAND NEW event loop, on
+    whatever thread calls this (intended to be a worker thread via
+    run_in_executor). On Windows this explicitly creates a ProactorEventLoop.
+
+    Why this exists: uvicorn on Windows — especially with --reload — runs
+    the main process on a SelectorEventLoop, which structurally does not
+    support subprocess creation (`_make_subprocess_transport` raises
+    NotImplementedError by design; only ProactorEventLoop overrides it on
+    Windows). Playwright launches its browser as a subprocess, so any
+    Playwright call made on that main loop fails with NotImplementedError —
+    even though the exact same code works fine standalone via `python -m
+    backend.run_vietstock`, since a standalone script gets the OS default
+    (ProactorEventLoop) with nothing overriding it.
+
+    Running Playwright in its own thread with its own explicit
+    ProactorEventLoop sidesteps this entirely, regardless of what policy
+    the main FastAPI/uvicorn loop happens to be using.
+    """
+    if sys.platform == "win32":
+        loop = asyncio.ProactorEventLoop()
+    else:
+        loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(coro_fn(*args, **kwargs))
+    finally:
+        loop.close()
+
+
+async def fetch_vietstock_urls_isolated(pool_url: str, max_clicks: int = 2):
+    """
+    Runs the Playwright-based fetch_vietstock_urls() on a separate OS thread
+    with its own dedicated ProactorEventLoop, isolated from the main
+    uvicorn event loop's policy. See _run_coro_in_isolated_windows_loop for
+    why this is necessary on Windows.
+    """
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(
+        None,
+        partial(_run_coro_in_isolated_windows_loop, fetch_vietstock_urls, pool_url, max_clicks),
+    )
+
 
 async def _get_ticker_sources(symbol: str) -> Optional[Dict[str, Any]]:
     """Fetches the active ticker's id plus all of its seeded crawler_sources
@@ -90,7 +130,8 @@ async def _run_http_source(
                     await asyncio.sleep(REQUEST_DELAY_SECONDS)
                 await session.commit()
     except Exception as e:
-        await queue.put(f"[{symbol}] [{publisher_label}] ❌ Fatal error _run_http_source: {e}")
+        await queue.put(f"[{symbol}] [{publisher_label}] ❌ Fatal error: {type(e).__name__}: {e}")
+        await queue.put(f"[{symbol}] [{publisher_label}] {traceback.format_exc()}")
         return
 
     await queue.put(
@@ -102,11 +143,13 @@ async def _run_vietstock_source(
     symbol: str, ticker_id: int, pool_url: str, queue: "asyncio.Queue[Optional[str]]"
 ) -> None:
     """Vietstock uses Playwright for URL discovery and a differently-shaped
-    parse function, so it can't share _run_http_source."""
+    parse function, so it can't share _run_http_source. URL discovery runs
+    in an isolated thread + event loop (see fetch_vietstock_urls_isolated)
+    so it isn't affected by uvicorn's main-loop policy on Windows."""
     await queue.put(f"[{symbol}] [Vietstock] Starting…")
     inserted = duplicates = errors = 0
     try:
-        items = await fetch_vietstock_urls(pool_url)
+        items = await fetch_vietstock_urls_isolated(pool_url)
         await queue.put(f"[{symbol}] [Vietstock] Discovered {len(items)} URL(s)")
 
         async with httpx.AsyncClient(timeout=12.0, follow_redirects=True) as client:
@@ -130,11 +173,8 @@ async def _run_vietstock_source(
                     await asyncio.sleep(REQUEST_DELAY_SECONDS)
                 await session.commit()
     except Exception as e:
-        
-        error_details = "".join(traceback.format_exception(type(e), e, e.__traceback__))
-        print(f"[{symbol}] [Vietstock] Detailed Fatal error:\n{error_details}")
-        
-        await queue.put(f"[{symbol}] [Vietstock] ❌ Fatal error _run_vietstock_source: {e}")
+        await queue.put(f"[{symbol}] [Vietstock] ❌ Fatal error: {type(e).__name__}: {e}")
+        await queue.put(f"[{symbol}] [Vietstock] {traceback.format_exc()}")
         return
 
     await queue.put(

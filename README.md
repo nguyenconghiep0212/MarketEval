@@ -125,7 +125,7 @@ python -m backend.database.seed_db.py
 uvicorn backend.main:app --reload --reload-dir backend --port 8000
 
 ## Run Desktop app
-python -m desktop_app.py
+python -m desktop_app
 
 ## Run Web
 streamlit run D:\Personal\MarketEval\ui\dashboard.py
