@@ -3,6 +3,13 @@
 -- ==========================================
 -- Intentionally non-destructive: preserve existing data on repeated runs.
 -- For clean resets in local development, run explicit DROP statements manually.
+DROP TABLE IF EXISTS risk_assessments CASCADE;
+DROP TABLE IF EXISTS news_articles CASCADE;
+DROP TABLE IF EXISTS financial_analysis_articles CASCADE;
+DROP TABLE IF EXISTS crawler_sources CASCADE;
+DROP TABLE IF EXISTS tickers CASCADE;
+DROP TABLE IF EXISTS article_attachments CASCADE;
+DROP TABLE IF EXISTS article_embeddings CASCADE;
 
 -- ==========================================
 -- STEP 2: ENABLE EXTENSIONS

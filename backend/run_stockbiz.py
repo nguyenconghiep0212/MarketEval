@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
 
 from backend.src.source_crawlers.stockbiz_parser import fetch_stockbiz_urls, parse_stockbiz_article
-from backend.database.queries import get_active_tickers_with_sources, save_articles
+from backend.database.queries.article import get_active_tickers_with_sources, save_articles
 
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/marketeval")
